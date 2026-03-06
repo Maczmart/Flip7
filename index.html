@@ -6,7 +6,6 @@
 <title>Flip7 — Cheil Game Night</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/mqtt@5.10.4/dist/mqtt.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -595,75 +594,66 @@ function setConnStatus(status, msg) {
 }
 
 // ══════════════════════════════════════════════
-// MQTT Multiplayer (HiveMQ free public broker)
+// WebSocket Relay Multiplayer (Deno Deploy)
 // ══════════════════════════════════════════════
-let mqttClient = null;
-const MQTT_BROKER = 'wss://broker.hivemq.com:8884/mqtt';
+let ws = null;
+const RELAY_URL = 'wss://flip7-relay.maczmart.deno.net';
 
-function topicFor(suffix) { return `flip7/${roomCode}/${suffix}`; }
-
-function connectMqtt() {
+function connectRelay() {
   return new Promise((resolve, reject) => {
     setConnStatus('connecting', 'Connecting...');
-    const clientId = 'flip7_' + Math.random().toString(36).slice(2, 10);
-    myId = clientId;
+    myId = 'flip7_' + Math.random().toString(36).slice(2, 10);
 
-    mqttClient = mqtt.connect(MQTT_BROKER, {
-      clientId,
-      clean: true,
-      connectTimeout: 10000,
-      keepalive: 30,
-      reconnectPeriod: 3000,
-    });
+    ws = new WebSocket(`${RELAY_URL}/ws/${roomCode}`);
 
-    mqttClient.on('connect', () => {
+    ws.onopen = () => {
       setConnStatus('connected', 'Online');
-      console.log('MQTT connected as', clientId);
-      resolve(clientId);
-    });
+      console.log('Relay connected as', myId);
+      resolve(myId);
+    };
 
-    mqttClient.on('reconnect', () => {
-      setConnStatus('connecting', 'Reconnecting...');
-    });
-
-    mqttClient.on('error', err => {
-      console.error('MQTT error:', err);
-      setConnStatus('error', 'Connection error');
-    });
-
-    mqttClient.on('offline', () => {
-      setConnStatus('error', 'Offline');
-    });
-
-    mqttClient.on('message', (topic, message) => {
+    ws.onmessage = (e) => {
       try {
-        const data = JSON.parse(message.toString());
-        const suffix = topic.split('/').pop();
+        const data = JSON.parse(e.data);
         if (isHost) {
-          if (suffix === 'join') handleHostMessage(data);
-          else if (suffix === 'action') handleHostAction(data);
+          if (data._t === 'join') handleHostMessage(data);
+          else if (data._t === 'action') handleHostAction(data);
         } else {
-          if (suffix === 'state') handlePlayerMessage(data);
+          if (data._t === 'state') handlePlayerMessage(data.state);
         }
-      } catch (e) {
-        console.error('Message parse error:', e);
+      } catch (err) {
+        console.error('Message parse error:', err);
       }
-    });
+    };
 
-    // Timeout
+    ws.onclose = () => {
+      setConnStatus('error', 'Disconnected');
+      // Auto-reconnect
+      setTimeout(() => {
+        if (roomCode) {
+          connectRelay().then(() => {
+            if (!isHost) wsSend({ _t: 'join', type: 'join', name: myName, id: myId });
+          }).catch(() => {});
+        }
+      }, 3000);
+    };
+
+    ws.onerror = () => {
+      setConnStatus('error', 'Connection error');
+    };
+
     setTimeout(() => {
-      if (connStatus !== 'connected') {
+      if (ws.readyState !== WebSocket.OPEN) {
         setConnStatus('error', 'Server unreachable');
-        toast('Could not connect to server.');
-        reject(new Error('MQTT timeout'));
+        toast('Could not connect to relay server.');
+        reject(new Error('Connection timeout'));
       }
-    }, 12000);
+    }, 10000);
   });
 }
 
-function mqttPublish(suffix, data) {
-  if (!mqttClient || !mqttClient.connected) return;
-  mqttClient.publish(topicFor(suffix), JSON.stringify(data));
+function wsSend(data) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data));
 }
 
 // ── Host: Create Game ──
@@ -671,17 +661,11 @@ async function createGame() {
   const name = $('#hostName').value.trim();
   if (!name) { toast('Enter your name'); return; }
   roomCode = generateCode();
-  try { await connectMqtt(); } catch (e) { toast(e.message); return; }
+  try { await connectRelay(); } catch (e) { toast(e.message); return; }
   isHost = true;
   myName = name;
   gameState.targetScore = parseInt($('#targetScore').value) || 200;
   gameState.players = [newPlayer(myId, myName)];
-
-  // Host subscribes to join requests and player actions
-  mqttClient.subscribe(topicFor('join'));
-  mqttClient.subscribe(topicFor('action'));
-  console.log('Host listening on', topicFor('join'), topicFor('action'));
-
   showWaitingRoom();
 }
 
@@ -692,18 +676,12 @@ async function joinGame() {
   if (!name) { toast('Enter your name'); return; }
   if (!code.match(/^FLIP-[A-Z0-9]{4}$/)) { toast('Invalid room code'); return; }
   roomCode = code; myName = name;
-  try { await connectMqtt(); } catch (e) { toast(e.message); return; }
+  try { await connectRelay(); } catch (e) { toast(e.message); return; }
 
-  // Player subscribes to game state updates
-  mqttClient.subscribe(topicFor('state'));
-  console.log('Player listening on', topicFor('state'));
-
-  // Send join request
-  mqttPublish('join', { type: 'join', name: myName, id: myId });
-
+  wsSend({ _t: 'join', type: 'join', name: myName, id: myId });
   showWaitingRoom();
 
-  // Retry join request a few times in case host hasn't subscribed yet
+  // Retry join a few times in case host hasn't connected yet
   let joinAttempts = 0;
   const joinInterval = setInterval(() => {
     joinAttempts++;
@@ -711,7 +689,7 @@ async function joinGame() {
       clearInterval(joinInterval);
       return;
     }
-    mqttPublish('join', { type: 'join', name: myName, id: myId });
+    wsSend({ _t: 'join', type: 'join', name: myName, id: myId });
   }, 2000);
 }
 
@@ -749,7 +727,7 @@ function handlePlayerMessage(data) {
 
 // ── Broadcast State (Host → All Players) ──
 function broadcastState() {
-  mqttPublish('state', gameState);
+  wsSend({ _t: 'state', state: gameState });
   renderGame();
 }
 
@@ -920,7 +898,7 @@ function addLog(msg) { gameState.log.push(msg); if (gameState.log.length > 60) g
 
 function sendAction(action, payload = {}) {
   if (isHost) handleAction(action, payload);
-  else mqttPublish('action', { action, payload, playerId: myId });
+  else wsSend({ _t: 'action', action, payload, playerId: myId });
 }
 
 // ═══════════════════════════════════════
