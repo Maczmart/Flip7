@@ -223,8 +223,12 @@ input:focus { border-color: var(--orange); }
 }
 .other-player.active-turn { border-color: var(--orange); }
 .other-player.busted { opacity: 0.45; }
+.other-player.stopped-player { border-color: var(--green); background: rgba(150,250,0,0.06); }
 .other-player.stopped-player .op-name { color: var(--green); }
+.other-player.stopped-player .op-name::after { content: ' ✅'; }
+.other-player.frozen-player { border-color: var(--blue); background: rgba(68,136,255,0.06); }
 .other-player.frozen-player .op-name { color: var(--blue); }
+.other-player.frozen-player .op-name::after { content: ' 🧊'; }
 .other-player .op-name { font-weight: 700; font-size: 13px; margin-bottom: 2px; }
 .other-player .op-status { font-size: 11px; color: var(--gray); }
 .other-player .op-cards { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 6px; }
@@ -366,10 +370,10 @@ input:focus { border-color: var(--orange); }
 .event-box.action .event-title { color: var(--green); font-size: 32px; font-weight: 800; letter-spacing: 2px; margin: 8px 0; }
 .event-box.action .event-sub { color: rgba(255,255,255,0.7); font-size: 16px; }
 
-.event-box.bonus { background: linear-gradient(135deg, #2a2a00, #1a1a00); border: 3px solid var(--yellow); }
-.event-box.bonus .event-icon { font-size: 72px; animation: eventPulse 0.8s ease; }
-.event-box.bonus .event-title { color: var(--yellow); font-size: 32px; font-weight: 800; margin: 8px 0; }
-.event-box.bonus .event-sub { color: rgba(255,255,255,0.7); font-size: 16px; }
+.event-box.bonus { background: linear-gradient(135deg, #2a2a00, #1a1a00); border: 3px solid var(--yellow); box-shadow: 0 0 60px rgba(255,240,0,0.4), 0 0 120px rgba(255,240,0,0.15); }
+.event-box.bonus .event-icon { font-size: 96px; animation: eventPulse 0.8s ease, eventGlow 1.5s ease infinite alternate; }
+.event-box.bonus .event-title { color: var(--yellow); font-size: 42px; font-weight: 800; margin: 8px 0; letter-spacing: 6px; text-shadow: 0 0 20px rgba(255,240,0,0.5); }
+.event-box.bonus .event-sub { color: rgba(255,255,255,0.85); font-size: 18px; font-weight: 600; }
 
 .event-card-img { width: 100px; height: 140px; border-radius: 10px; margin: 0 auto 12px; display: block;
   box-shadow: 0 0 30px rgba(255,255,255,0.2); }
@@ -386,6 +390,10 @@ input:focus { border-color: var(--orange); }
   0% { transform: scale(0.3); opacity: 0; }
   50% { transform: scale(1.2); opacity: 1; }
   100% { transform: scale(1); opacity: 1; }
+}
+@keyframes eventGlow {
+  0% { filter: drop-shadow(0 0 8px rgba(255,240,0,0.3)); }
+  100% { filter: drop-shadow(0 0 20px rgba(255,240,0,0.7)); transform: scale(1.1); }
 }
 
 .toast {
@@ -830,7 +838,7 @@ function broadcastState() {
 // ── Host: Deal Starting Cards ──
 function dealStartingCards() {
   for (const p of gameState.players) {
-    if (gameState.deck.length === 0) return;
+    if (gameState.deck.length === 0) { gameState.deck = buildDeck(); addLog('Deck neu gemischt'); }
     const card = gameState.deck.pop();
     if (isTargetableCard(card)) {
       // During deal, auto-apply to the dealt player
@@ -877,7 +885,8 @@ function resolveCardInstant(player, card) {
   } else if (card.type === 'flipThree') {
     addLog(`<span class="log-action">${player.name}</span> zog <span class="log-action">FLIP THREE</span> — zieht 3 weitere Karten!`);
     for (let i = 0; i < 3; i++) {
-      if (player.busted || player.stopped || gameState.deck.length === 0) break;
+      if (player.busted || player.stopped) break;
+      if (gameState.deck.length === 0) { gameState.deck = buildDeck(); addLog('Deck neu gemischt'); }
       const nextCard = gameState.deck.pop();
       resolveCardInstant(player, nextCard);
     }
@@ -885,28 +894,67 @@ function resolveCardInstant(player, card) {
 }
 
 // Check what event a number card would cause (before resolving)
+const bustSubs = [
+  name => `${name} hat's verkackt. Wie immer.`,
+  name => `${name} dachte, Glück wäre eine Fähigkeit.`,
+  name => `RIP ${name}. Gier frisst Hirn.`,
+  name => `${name} war zu gierig. Überraschung.`,
+  name => `Tja, ${name}. Hättest mal stoppen sollen.`,
+  name => `${name} und Risikomanagement — eine unmögliche Kombination.`,
+  name => `${name} hat die Statistik nicht verstanden.`,
+  name => `${name}: "Ich zieh noch eine!" — Erzähler: Es war keine gute Idee.`,
+];
+const secondChanceSubs = [
+  name => `${name} wurde gerettet. Diesmal.`,
+  name => `${name} hat mehr Glück als Verstand.`,
+  name => `Das war knapp, ${name}. Nächstes Mal nicht.`,
+  name => `${name} lebt noch — aber wie lange?`,
+];
+const flip7Subs = [
+  name => `${name} hat's tatsächlich geschafft. Respekt.`,
+  name => `${name} ist ein Gott unter Spielern!`,
+  name => `Legende! ${name} hat 7 verschiedene!`,
+  name => `${name} holt den Wahnsinnsbonuuuus!`,
+];
+const freezeSubs = [
+  (drawer, target) => drawer === target ? `${drawer} friert sich selber ein. Sicher ist sicher.` : `${drawer} hat ${target} auf Eis gelegt. Kalt.`,
+  (drawer, target) => drawer === target ? `${drawer} macht den Kühlschrank. Smart.` : `${drawer} sagt zu ${target}: Setz dich hin.`,
+];
+const multiplySubs = [
+  (drawer, target) => drawer === target ? `${drawer} verdoppelt den eigenen Score. Gierig.` : `${drawer} gönnt ${target} den Doppel-Boost. Wie nett.`,
+];
+const modifierSubs = [
+  (drawer, target, val) => drawer === target ? `${drawer} gibt sich selbst +${val}. Bescheiden.` : `${drawer} drückt ${target} +${val} Punkte auf. Dreist.`,
+];
+const flipThreeSubs = [
+  name => `${name} zieht 3 Karten. Was kann schon schiefgehen?`,
+  name => `${name} zieht 3 auf einmal. Mutig oder dumm?`,
+  name => `${name} geht All-In mit FLIP THREE!`,
+];
+function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
 function detectNumberEvent(player, card) {
   if (card.type !== 'number') return null;
   const hasDuplicate = player.numberCards.some(c => c.value === card.value);
   if (hasDuplicate) {
     if (player.hasSecondChance) {
-      return { type: 'action', icon: '🛡️', title: 'ZWEITE CHANCE!', sub: `${player.name} wurde gerettet!` };
+      return { type: 'action', icon: '🛡️', title: 'ZWEITE CHANCE!', sub: pickRandom(secondChanceSubs)(player.name) };
     } else {
-      return { type: 'bust', icon: '👎', title: 'VERKACKT!', sub: `${player.name} hat ${card.value} doppelt gezogen!` };
+      return { type: 'bust', icon: '👎', title: 'VERKACKT!', sub: pickRandom(bustSubs)(player.name) };
     }
   }
   // Check if this would give 7 unique
   const unique = new Set(player.numberCards.map(c => c.value));
   unique.add(card.value);
   if (unique.size >= 7) {
-    return { type: 'bonus', icon: '⭐', title: 'FLIP 7!', sub: `${player.name} hat 7 verschiedene Zahlen! +15 Bonus!` };
+    return { type: 'bonus', icon: '🏆', title: 'FLIP 7!', sub: pickRandom(flip7Subs)(player.name), duration: 4500 };
   }
   return null;
 }
 
 // Detect event for flipThree (check all 3 cards)
 function detectFlipThreeEvent(player) {
-  return { type: 'action', icon: '🃏', title: 'FLIP THREE!', sub: `${player.name} zieht 3 weitere Karten!` };
+  return { type: 'action', icon: '🃏', title: 'FLIP THREE!', sub: pickRandom(flipThreeSubs)(player.name) };
 }
 
 // Apply a targetable action card to a chosen player
@@ -954,7 +1002,7 @@ function forceResolveReveal() {
 
 function handleAction(action, payload) {
   // Safety: if stuck in revealing for >5s, force-resolve before processing
-  if (gameState.turnPhase === 'revealing' && gameState._revealStart && Date.now() - gameState._revealStart > 5000) {
+  if (gameState.turnPhase === 'revealing' && gameState._revealStart && Date.now() - gameState._revealStart > 7000) {
     forceResolveReveal();
   }
 
@@ -988,6 +1036,7 @@ function handleAction(action, payload) {
         broadcastState();
 
         // Phase 2: after delay, resolve the actual effect
+        const revealDuration = event.duration || 2500;
         if (revealTimer) clearTimeout(revealTimer);
         revealTimer = setTimeout(() => {
           revealTimer = null;
@@ -998,7 +1047,7 @@ function handleAction(action, payload) {
           resolveCardInstant(cp, card);
           advanceTurn();
           broadcastState();
-        }, 2500);
+        }, revealDuration);
       } else {
         // Normal card, no drama
         resolveCardInstant(cp, card);
@@ -1015,14 +1064,16 @@ function handleAction(action, payload) {
     // Build event for the action card application
     const cardName = card.type === 'freeze' ? 'FREEZE' :
       card.type === 'secondChance' ? 'SECOND CHANCE' :
-      card.type === 'multiply2x' ? 'x2 MULTIPLY' : `+${card.value}`;
+      card.type === 'multiply2x' ? 'x2 MULTIPLIKATOR' : `+${card.value}`;
     const icon = card.type === 'freeze' ? '🥶' :
       card.type === 'secondChance' ? '🛡️' :
       card.type === 'multiply2x' ? '✖️' : '➕';
     const eventType = card.type === 'freeze' ? 'freeze' : 'action';
-    const sub = targetPlayer.id === cp.id
-      ? `${cp.name} nutzt ${cardName} auf sich selbst!`
-      : `${cp.name} spielt ${cardName} auf ${targetPlayer.name}!`;
+    const dn = cp.name, tn = targetPlayer.name;
+    const sub = card.type === 'freeze' ? pickRandom(freezeSubs)(dn, tn)
+      : card.type === 'multiply2x' ? pickRandom(multiplySubs)(dn, tn)
+      : card.type === 'modifier' ? pickRandom(modifierSubs)(dn, tn, card.value)
+      : targetPlayer.id === cp.id ? `${dn} gibt sich selbst eine Zweite Chance.` : `${dn} gibt ${tn} eine Zweite Chance. Gönnerhaft.`;
     gameState.event = { type: eventType, icon, title: cardName, sub };
 
     applyCardToTarget(targetPlayer, card, cp);
@@ -1044,8 +1095,25 @@ function handleAction(action, payload) {
     cp.stopped = true;
     cp.roundScore = calcRoundScore(cp);
     addLog(`<span class="log-highlight">${cp.name}</span> stoppt mit <span class="log-highlight">${cp.roundScore}</span> Pkt.`);
-    advanceTurn();
+    const stayQuotes = [
+      `${cp.name} hat genug. Feigling oder Genie?`,
+      `${cp.name} macht den Abgang. Klug oder langweilig?`,
+      `${cp.name} sichert ${cp.roundScore} Punkte. Kein Risiko, kein Spaß.`,
+      `${cp.name} steigt aus. Safety first, Spaß never.`,
+    ];
+    gameState.event = { type: 'action', icon: '✅', title: 'GESICHERT!', sub: pickRandom(stayQuotes) };
+    gameState.turnPhase = 'revealing';
+    gameState._revealStart = Date.now();
     broadcastState();
+    if (revealTimer) clearTimeout(revealTimer);
+    revealTimer = setTimeout(() => {
+      revealTimer = null;
+      if (gameState.turnPhase !== 'revealing') return;
+      gameState.event = null;
+      gameState._revealStart = null;
+      advanceTurn();
+      broadcastState();
+    }, 1800);
   }
 }
 
@@ -1366,6 +1434,7 @@ function showEventOverlay(event) {
   $('#eventTitle').textContent = event.title;
   $('#eventSub').textContent = event.sub;
   overlay.classList.add('visible');
+  if (event.type === 'bonus') spawnConfetti();
 }
 
 function hideEventOverlay() {
