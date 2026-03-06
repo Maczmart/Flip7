@@ -83,8 +83,7 @@ input:focus { border-color: var(--orange); }
 
 /* ── Lobby ── */
 .lobby-container { text-align: center; }
-.lobby-container h1 { font-size: 64px; font-weight: 800; letter-spacing: -3px; margin-bottom: 4px; }
-.lobby-container h1 span { color: var(--orange); }
+.lobby-logo { max-width: 280px; height: auto; margin-bottom: 8px; }
 .lobby-container .tagline { color: var(--gray); font-size: 14px; margin-bottom: 48px; }
 
 .lobby-actions { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; }
@@ -205,7 +204,7 @@ input:focus { border-color: var(--orange); }
 
 .hand-card.bust-card { animation: shake 0.5s; }
 .hand-card.bust-card::after {
-  content: 'BUST'; position: absolute; inset: 0; display: flex; align-items: center;
+  content: '👎'; position: absolute; inset: 0; display: flex; align-items: center;
   justify-content: center; background: rgba(250,80,220,0.7); color: #fff;
   font-weight: 800; font-size: 14px; letter-spacing: 2px;
 }
@@ -416,7 +415,7 @@ input:focus { border-color: var(--orange); }
 
 /* ── Responsive ── */
 @media (max-width: 600px) {
-  .lobby-container h1 { font-size: 42px; }
+  .lobby-logo { max-width: 200px; }
   .lobby-card { width: 100%; }
   .lobby-actions { flex-direction: column; align-items: center; }
   :root { --card-w: 85px; --card-h: 119px; }
@@ -438,24 +437,24 @@ input:focus { border-color: var(--orange); }
     <!-- Lobby -->
     <section id="lobbyScreen" class="screen active">
       <div class="lobby-container">
-        <h1>FLIP<span>7</span></h1>
-        <p class="tagline">Press your luck — the greatest card game of all time</p>
+        <img src="assets/Flip7 Logo.webp" alt="Flip7" class="lobby-logo">
+        <p class="tagline">Riskier alles — das beste Kartenspiel aller Zeiten</p>
         <div class="lobby-actions">
           <div class="lobby-card">
-            <h2>Host a Game</h2>
-            <label>Your Name</label>
-            <input type="text" id="hostName" placeholder="Enter name" maxlength="16">
-            <label>Target Score</label>
+            <h2>Spiel erstellen</h2>
+            <label>Dein Name</label>
+            <input type="text" id="hostName" placeholder="Name eingeben" maxlength="16">
+            <label>Zielpunktzahl</label>
             <input type="number" id="targetScore" value="200" min="50" max="999" step="50">
-            <button class="btn btn-orange btn-full" id="btnCreate">Create Game</button>
+            <button class="btn btn-orange btn-full" id="btnCreate">Spiel erstellen</button>
           </div>
           <div class="lobby-card">
-            <h2>Join a Game</h2>
-            <label>Your Name</label>
-            <input type="text" id="joinName" placeholder="Enter name" maxlength="16">
-            <label>Room Code</label>
+            <h2>Spiel beitreten</h2>
+            <label>Dein Name</label>
+            <input type="text" id="joinName" placeholder="Name eingeben" maxlength="16">
+            <label>Raum-Code</label>
             <input type="text" id="joinCode" placeholder="FLIP-XXXX" maxlength="9" style="text-transform:uppercase">
-            <button class="btn btn-green btn-full" id="btnJoin">Join Game</button>
+            <button class="btn btn-green btn-full" id="btnJoin">Beitreten</button>
           </div>
         </div>
       </div>
@@ -464,15 +463,15 @@ input:focus { border-color: var(--orange); }
     <!-- Waiting Room -->
     <section id="waitingScreen" class="screen">
       <div class="waiting-container">
-        <h2>Waiting for Players</h2>
-        <div class="room-code-display" id="displayRoomCode" title="Click to copy"></div>
-        <div class="copy-hint">Click to copy — share with friends</div>
+        <h2>Warte auf Spieler</h2>
+        <div class="room-code-display" id="displayRoomCode" title="Klicken zum Kopieren"></div>
+        <div class="copy-hint">Klicken zum Kopieren — an Freunde senden</div>
         <div class="player-list" id="waitingPlayers"></div>
         <div class="settings-row" id="hostSettings">
-          <label>Target Score:</label>
+          <label>Zielpunktzahl:</label>
           <input type="number" id="waitingTarget" value="200" min="50" max="999" step="50">
         </div>
-        <button class="btn btn-orange" id="btnStart" style="display:none">Start Game</button>
+        <button class="btn btn-orange" id="btnStart" style="display:none">Spiel starten</button>
         <p id="waitingMsg" style="color:var(--gray);font-size:12px;margin-top:10px;"></p>
       </div>
     </section>
@@ -481,7 +480,7 @@ input:focus { border-color: var(--orange); }
     <section id="gameScreen" class="screen">
       <div class="game-container">
         <div class="game-main">
-          <div class="turn-banner" id="turnBanner">Waiting...</div>
+          <div class="turn-banner" id="turnBanner">Warte...</div>
           <div class="other-players" id="otherPlayers"></div>
 
           <!-- Deck / Flip Area -->
@@ -495,30 +494,30 @@ input:focus { border-color: var(--orange); }
                   <img src="" alt="Card front" id="flipCardImg">
                 </div>
               </div>
-              <div class="deck-count-badge"><span id="deckCount">94</span> left</div>
+              <div class="deck-count-badge"><span id="deckCount">94</span> übrig</div>
             </div>
-            <div class="flip-hint" id="flipHint" style="display:none">Click card to flip</div>
+            <div class="flip-hint" id="flipHint" style="display:none">Karte antippen zum Aufdecken</div>
           </div>
 
           <div class="stay-btn-area" id="stayArea" style="display:none">
-            <button class="btn btn-green" id="btnStay">Stay &amp; Bank Points</button>
+            <button class="btn btn-green" id="btnStay">Stoppen &amp; Punkte sichern</button>
           </div>
 
           <!-- My Cards -->
           <div class="card-area">
-            <h3>Your Number Cards</h3>
+            <h3>Deine Zahlenkarten</h3>
             <div class="cards-row" id="myNumberCards"></div>
             <div class="cards-row modifier-row" id="myModifierCards" style="display:none"></div>
           </div>
 
-          <div class="game-log" id="gameLog"><h4>Game Log</h4></div>
+          <div class="game-log" id="gameLog"><h4>Spielverlauf</h4></div>
         </div>
 
         <div class="scoreboard">
-          <div class="round-info">Round <span id="currentRound">1</span></div>
-          <h3>Scores</h3>
+          <div class="round-info">Runde <span id="currentRound">1</span></div>
+          <h3>Punktestand</h3>
           <div id="scoreboardEntries"></div>
-          <div class="target-info">Target: <span id="targetDisplay">200</span> pts</div>
+          <div class="target-info">Ziel: <span id="targetDisplay">200</span> Pkt.</div>
         </div>
       </div>
     </section>
@@ -526,9 +525,9 @@ input:focus { border-color: var(--orange); }
     <!-- Round Summary -->
     <div class="overlay" id="roundOverlay">
       <div class="overlay-content">
-        <h2 id="roundOverlayTitle">Round Complete</h2>
+        <h2 id="roundOverlayTitle">Runde vorbei</h2>
         <div class="round-results" id="roundResults"></div>
-        <button class="btn btn-orange" id="btnNextRound">Next Round</button>
+        <button class="btn btn-orange" id="btnNextRound">Nächste Runde</button>
         <p id="roundWaitMsg" style="color:var(--gray);font-size:12px;margin-top:6px;"></p>
       </div>
     </div>
@@ -536,10 +535,10 @@ input:focus { border-color: var(--orange); }
     <!-- Final Results -->
     <div class="overlay" id="finalOverlay">
       <div class="overlay-content final-results">
-        <h2>Game Over</h2>
+        <h2>Spiel vorbei</h2>
         <div class="winner-name" id="winnerName"></div>
         <div class="final-scores" id="finalScores"></div>
-        <button class="btn btn-orange" id="btnPlayAgain">Play Again</button>
+        <button class="btn btn-orange" id="btnPlayAgain">Nochmal spielen</button>
       </div>
     </div>
   </main>
@@ -557,7 +556,7 @@ input:focus { border-color: var(--orange); }
     <!-- Target Selection Modal -->
     <div class="overlay" id="targetOverlay">
       <div class="overlay-content target-select">
-        <h2 id="targetTitle">Apply to whom?</h2>
+        <h2 id="targetTitle">Auf wen anwenden?</h2>
         <div class="target-card-preview" id="targetCardPreview"></div>
         <div class="target-players" id="targetPlayers"></div>
       </div>
@@ -689,13 +688,13 @@ const RELAY_URL = 'wss://flip7-relay.maczmart.deno.net';
 
 function connectRelay() {
   return new Promise((resolve, reject) => {
-    setConnStatus('connecting', 'Connecting...');
+    setConnStatus('connecting', 'Verbinde...');
     myId = 'flip7_' + Math.random().toString(36).slice(2, 10);
 
     ws = new WebSocket(`${RELAY_URL}/ws/${roomCode}`);
 
     ws.onopen = () => {
-      setConnStatus('connected', 'Online');
+      setConnStatus('connected', 'Verbunden');
       console.log('Relay connected as', myId);
       resolve(myId);
     };
@@ -715,7 +714,7 @@ function connectRelay() {
     };
 
     ws.onclose = () => {
-      setConnStatus('error', 'Disconnected');
+      setConnStatus('error', 'Getrennt');
       // Auto-reconnect
       setTimeout(() => {
         if (roomCode) {
@@ -727,13 +726,13 @@ function connectRelay() {
     };
 
     ws.onerror = () => {
-      setConnStatus('error', 'Connection error');
+      setConnStatus('error', 'Verbindungsfehler');
     };
 
     setTimeout(() => {
       if (ws.readyState !== WebSocket.OPEN) {
-        setConnStatus('error', 'Server unreachable');
-        toast('Could not connect to relay server.');
+        setConnStatus('error', 'Server nicht erreichbar');
+        toast('Verbindung zum Server fehlgeschlagen.');
         reject(new Error('Connection timeout'));
       }
     }, 10000);
@@ -747,7 +746,7 @@ function wsSend(data) {
 // ── Host: Create Game ──
 async function createGame() {
   const name = $('#hostName').value.trim();
-  if (!name) { toast('Enter your name'); return; }
+  if (!name) { toast('Bitte Name eingeben'); return; }
   roomCode = generateCode();
   try { await connectRelay(); } catch (e) { toast(e.message); return; }
   isHost = true;
@@ -761,8 +760,8 @@ async function createGame() {
 async function joinGame() {
   const name = $('#joinName').value.trim();
   const code = $('#joinCode').value.trim().toUpperCase();
-  if (!name) { toast('Enter your name'); return; }
-  if (!code.match(/^FLIP-[A-Z0-9]{4}$/)) { toast('Invalid room code'); return; }
+  if (!name) { toast('Bitte Name eingeben'); return; }
+  if (!code.match(/^FLIP-[A-Z0-9]{4}$/)) { toast('Ungültiger Raum-Code'); return; }
   roomCode = code; myName = name;
   try { await connectRelay(); } catch (e) { toast(e.message); return; }
 
@@ -788,13 +787,13 @@ function handleHostMessage(data) {
     if (existing) {
       existing.id = data.id;
       broadcastState();
-      addLog(`${data.name} reconnected`);
+      addLog(`${data.name} wieder verbunden`);
       return;
     }
     if (gameState.players.length >= 10) return;
     if (gameState.phase !== 'lobby') return;
     gameState.players.push(newPlayer(data.id, data.name));
-    addLog(`${data.name} joined`);
+    addLog(`${data.name} ist beigetreten`);
     broadcastState();
   }
 }
@@ -858,25 +857,25 @@ function resolveCardInstant(player, card) {
     if (hasDuplicate) {
       if (player.hasSecondChance) {
         player.hasSecondChance = false;
-        addLog(`<span class="log-highlight">${player.name}</span> flipped ${card.value} (duplicate) — <span class="log-action">SECOND CHANCE</span> saved them!`);
+        addLog(`<span class="log-highlight">${player.name}</span> zog ${card.value} (Doppelt) — <span class="log-action">ZWEITE CHANCE</span> hat gerettet!`);
       } else {
         player.numberCards.push({ ...card, bustCard: true });
         player.busted = true;
         player.roundScore = 0;
-        addLog(`<span class="log-bust">${player.name}</span> flipped ${card.value} — <span class="log-bust">BUST!</span>`);
+        addLog(`<span class="log-bust">${player.name}</span> zog ${card.value} — <span class="log-bust">VERKACKT! 👎</span>`);
       }
     } else {
       player.numberCards.push(card);
-      addLog(`<span class="log-highlight">${player.name}</span> flipped a <span class="log-highlight">${card.value}</span>`);
+      addLog(`<span class="log-highlight">${player.name}</span> zog eine <span class="log-highlight">${card.value}</span>`);
       const unique = new Set(player.numberCards.map(c => c.value));
       if (unique.size >= 7) {
         player.stopped = true;
         player.roundScore = calcRoundScore(player);
-        addLog(`<span class="log-action">${player.name}</span> collected 7 unique numbers! +15 bonus!`);
+        addLog(`<span class="log-action">${player.name}</span> hat 7 verschiedene Zahlen! +15 Bonus!`);
       }
     }
   } else if (card.type === 'flipThree') {
-    addLog(`<span class="log-action">${player.name}</span> drew <span class="log-action">FLIP THREE</span> — drawing 3 more cards!`);
+    addLog(`<span class="log-action">${player.name}</span> zog <span class="log-action">FLIP THREE</span> — zieht 3 weitere Karten!`);
     for (let i = 0; i < 3; i++) {
       if (player.busted || player.stopped || gameState.deck.length === 0) break;
       const nextCard = gameState.deck.pop();
@@ -891,23 +890,23 @@ function detectNumberEvent(player, card) {
   const hasDuplicate = player.numberCards.some(c => c.value === card.value);
   if (hasDuplicate) {
     if (player.hasSecondChance) {
-      return { type: 'action', icon: '🛡️', title: 'SECOND CHANCE!', sub: `${player.name} is saved from bust!` };
+      return { type: 'action', icon: '🛡️', title: 'ZWEITE CHANCE!', sub: `${player.name} wurde gerettet!` };
     } else {
-      return { type: 'bust', icon: '💥', title: 'BUST!', sub: `${player.name} drew a duplicate ${card.value}!` };
+      return { type: 'bust', icon: '👎', title: 'VERKACKT!', sub: `${player.name} hat ${card.value} doppelt gezogen!` };
     }
   }
   // Check if this would give 7 unique
   const unique = new Set(player.numberCards.map(c => c.value));
   unique.add(card.value);
   if (unique.size >= 7) {
-    return { type: 'bonus', icon: '⭐', title: 'FLIP 7!', sub: `${player.name} collected 7 unique numbers! +15 bonus!` };
+    return { type: 'bonus', icon: '⭐', title: 'FLIP 7!', sub: `${player.name} hat 7 verschiedene Zahlen! +15 Bonus!` };
   }
   return null;
 }
 
 // Detect event for flipThree (check all 3 cards)
 function detectFlipThreeEvent(player) {
-  return { type: 'action', icon: '🃏', title: 'FLIP THREE!', sub: `${player.name} draws 3 more cards!` };
+  return { type: 'action', icon: '🃏', title: 'FLIP THREE!', sub: `${player.name} zieht 3 weitere Karten!` };
 }
 
 // Apply a targetable action card to a chosen player
@@ -916,32 +915,57 @@ function applyCardToTarget(target, card, drawer) {
     target.frozen = true;
     target.stopped = true;
     target.roundScore = calcRoundScore(target);
-    const who = target.id === drawer.id ? '' : ` on <span class="log-highlight">${target.name}</span>`;
-    addLog(`<span class="log-freeze">${drawer.name}</span> played <span class="log-freeze">FREEZE</span>${who} — locked in with ${target.roundScore} pts`);
+    const who = target.id === drawer.id ? '' : ` auf <span class="log-highlight">${target.name}</span>`;
+    addLog(`<span class="log-freeze">${drawer.name}</span> spielte <span class="log-freeze">FREEZE</span>${who} — eingefroren mit ${target.roundScore} Pkt.`);
   } else if (card.type === 'secondChance') {
     target.hasSecondChance = true;
-    const who = target.id === drawer.id ? '' : ` to <span class="log-highlight">${target.name}</span>`;
-    addLog(`<span class="log-action">${drawer.name}</span> gave <span class="log-action">SECOND CHANCE</span>${who}`);
+    const who = target.id === drawer.id ? '' : ` an <span class="log-highlight">${target.name}</span>`;
+    addLog(`<span class="log-action">${drawer.name}</span> gab <span class="log-action">ZWEITE CHANCE</span>${who}`);
   } else if (card.type === 'multiply2x') {
     target.hasMultiply2x = true;
-    const who = target.id === drawer.id ? '' : ` to <span class="log-highlight">${target.name}</span>`;
-    addLog(`<span class="log-action">${drawer.name}</span> gave <span class="log-action">x2 MULTIPLY</span>${who}`);
+    const who = target.id === drawer.id ? '' : ` an <span class="log-highlight">${target.name}</span>`;
+    addLog(`<span class="log-action">${drawer.name}</span> gab <span class="log-action">x2 MULTIPLIKATOR</span>${who}`);
   } else if (card.type === 'modifier') {
     target.modifiers.push(card.value);
-    const who = target.id === drawer.id ? '' : ` to <span class="log-highlight">${target.name}</span>`;
-    addLog(`<span class="log-action">${drawer.name}</span> gave <span class="log-action">+${card.value}</span>${who}`);
+    const who = target.id === drawer.id ? '' : ` an <span class="log-highlight">${target.name}</span>`;
+    addLog(`<span class="log-action">${drawer.name}</span> gab <span class="log-action">+${card.value}</span>${who}`);
   }
 }
 
 // ── Host: Handle Player Action ──
+let revealTimer = null;
+
+function forceResolveReveal() {
+  if (gameState.turnPhase !== 'revealing') return;
+  console.warn('Force-resolving stuck reveal phase');
+  if (revealTimer) { clearTimeout(revealTimer); revealTimer = null; }
+  gameState.event = null;
+  // If there was a card pushed during reveal, pop it back before resolving
+  const cp = gameState.players[gameState.currentPlayerIdx];
+  const card = gameState.lastFlipped;
+  if (card && card.type === 'number' && cp) {
+    const idx = cp.numberCards.findIndex(c => c.value === card.value && c.type === card.type);
+    if (idx !== -1) cp.numberCards.splice(idx, 1);
+  }
+  if (cp && card) resolveCardInstant(cp, card);
+  advanceTurn();
+  broadcastState();
+}
+
 function handleAction(action, payload) {
+  // Safety: if stuck in revealing for >5s, force-resolve before processing
+  if (gameState.turnPhase === 'revealing' && gameState._revealStart && Date.now() - gameState._revealStart > 5000) {
+    forceResolveReveal();
+  }
+
   const cp = gameState.players[gameState.currentPlayerIdx];
 
   if (action === 'flip') {
     if (cp.busted || cp.stopped) return;
+    if (gameState.turnPhase === 'revealing') return; // still within normal reveal window
     if (gameState.deck.length === 0) {
       gameState.deck = buildDeck();
-      addLog('Deck reshuffled');
+      addLog('Deck neu gemischt');
     }
     const card = gameState.deck.pop();
     gameState.lastFlipped = card;
@@ -959,12 +983,17 @@ function handleAction(action, payload) {
         // Phase 1: show the card + event, don't resolve yet
         gameState.event = event;
         gameState.turnPhase = 'revealing';
+        gameState._revealStart = Date.now();
         if (card.type === 'number') cp.numberCards.push(card);
         broadcastState();
 
         // Phase 2: after delay, resolve the actual effect
-        setTimeout(() => {
+        if (revealTimer) clearTimeout(revealTimer);
+        revealTimer = setTimeout(() => {
+          revealTimer = null;
+          if (gameState.turnPhase !== 'revealing') return;
           gameState.event = null;
+          gameState._revealStart = null;
           if (card.type === 'number') cp.numberCards.pop();
           resolveCardInstant(cp, card);
           advanceTurn();
@@ -992,24 +1021,29 @@ function handleAction(action, payload) {
       card.type === 'multiply2x' ? '✖️' : '➕';
     const eventType = card.type === 'freeze' ? 'freeze' : 'action';
     const sub = targetPlayer.id === cp.id
-      ? `${cp.name} uses ${cardName} on themselves!`
-      : `${cp.name} plays ${cardName} on ${targetPlayer.name}!`;
+      ? `${cp.name} nutzt ${cardName} auf sich selbst!`
+      : `${cp.name} spielt ${cardName} auf ${targetPlayer.name}!`;
     gameState.event = { type: eventType, icon, title: cardName, sub };
 
     applyCardToTarget(targetPlayer, card, cp);
     gameState.pendingCard = null;
     gameState.turnPhase = 'revealing';
+    gameState._revealStart = Date.now();
     broadcastState();
 
-    setTimeout(() => {
+    if (revealTimer) clearTimeout(revealTimer);
+    revealTimer = setTimeout(() => {
+      revealTimer = null;
+      if (gameState.turnPhase !== 'revealing') return;
       gameState.event = null;
+      gameState._revealStart = null;
       advanceTurn();
       broadcastState();
     }, 2200);
   } else if (action === 'stay') {
     cp.stopped = true;
     cp.roundScore = calcRoundScore(cp);
-    addLog(`<span class="log-highlight">${cp.name}</span> stayed with <span class="log-highlight">${cp.roundScore}</span> pts`);
+    addLog(`<span class="log-highlight">${cp.name}</span> stoppt mit <span class="log-highlight">${cp.roundScore}</span> Pkt.`);
     advanceTurn();
     broadcastState();
   }
@@ -1066,7 +1100,7 @@ function startNextRound() {
   // Rotate starting player
   gameState.currentPlayerIdx = (gameState.round - 1) % gameState.players.length;
 
-  addLog(`Round ${gameState.round} started`);
+  addLog(`Runde ${gameState.round} gestartet`);
 
   // Deal one starting card to each player
   dealStartingCards();
@@ -1123,11 +1157,11 @@ function showWaitingRoom() {
   if (isHost) {
     $('#btnStart').style.display = 'inline-flex';
     $('#hostSettings').style.display = 'flex';
-    $('#waitingMsg').textContent = gameState.players.length < 2 ? 'Need at least 2 players' : '';
+    $('#waitingMsg').textContent = gameState.players.length < 2 ? 'Mindestens 2 Spieler nötig' : '';
   } else {
     $('#btnStart').style.display = 'none';
     $('#hostSettings').style.display = 'none';
-    $('#waitingMsg').textContent = 'Waiting for host to start...';
+    $('#waitingMsg').textContent = 'Warte auf den Host...';
   }
   renderWaitingRoom();
 }
@@ -1143,7 +1177,7 @@ function renderWaitingRoom() {
   gameState.players.forEach((p, i) => {
     const chip = document.createElement('div');
     chip.className = 'player-chip' + (i === 0 ? ' host' : '');
-    chip.textContent = p.name + (p.id === myId ? ' (you)' : '');
+    chip.textContent = p.name + (p.id === myId ? ' (du)' : '');
     list.appendChild(chip);
   });
   if (isHost) $('#btnStart').disabled = gameState.players.length < 2;
@@ -1159,12 +1193,12 @@ function renderBoard() {
   // Turn banner
   const banner = $('#turnBanner');
   banner.className = 'turn-banner';
-  if (me && me.busted) { banner.textContent = 'You busted this round!'; banner.classList.add('bust'); }
-  else if (me && me.frozen) { banner.textContent = `Frozen! Banked ${me.roundScore} pts`; banner.classList.add('frozen'); }
-  else if (me && me.stopped) { banner.textContent = `Stayed — secured ${me.roundScore} pts`; banner.classList.add('stopped'); }
-  else if (choosingTarget) { banner.textContent = 'Choose a player to apply the card to!'; banner.classList.add('your-turn'); }
-  else if (isMyTurn) { banner.textContent = 'Your turn — Flip or Stay?'; banner.classList.add('your-turn'); }
-  else if (cp) { banner.textContent = `${cp.name}'s turn...`; banner.classList.add('other-turn'); }
+  if (me && me.busted) { banner.textContent = 'Verkackt diese Runde! 👎'; banner.classList.add('bust'); }
+  else if (me && me.frozen) { banner.textContent = `Eingefroren! ${me.roundScore} Pkt. gesichert`; banner.classList.add('frozen'); }
+  else if (me && me.stopped) { banner.textContent = `Gestoppt — ${me.roundScore} Pkt. gesichert`; banner.classList.add('stopped'); }
+  else if (choosingTarget) { banner.textContent = 'Wähle einen Spieler für die Karte!'; banner.classList.add('your-turn'); }
+  else if (isMyTurn) { banner.textContent = 'Dein Zug — Aufdecken oder Stoppen?'; banner.classList.add('your-turn'); }
+  else if (cp) { banner.textContent = `${cp.name} ist dran...`; banner.classList.add('other-turn'); }
 
   // Deck / Flip card
   const flipCard = $('#flipCard');
@@ -1244,10 +1278,10 @@ function renderBoard() {
     if (p.stopped && !p.frozen) div.classList.add('stopped-player');
     if (p.frozen) div.classList.add('frozen-player');
 
-    let status = `${p.numberCards.length} cards`;
-    if (p.busted) status = 'BUSTED';
-    else if (p.frozen) status = `Frozen (${p.roundScore} pts)`;
-    else if (p.stopped) status = `Stayed (${p.roundScore} pts)`;
+    let status = `${p.numberCards.length} Karten`;
+    if (p.busted) status = 'VERKACKT 👎';
+    else if (p.frozen) status = `Eingefroren (${p.roundScore} Pkt.)`;
+    else if (p.stopped) status = `Gestoppt (${p.roundScore} Pkt.)`;
 
     const miniCards = p.numberCards.map(c => {
       const cls = c.bustCard ? ' bust' : '';
@@ -1277,7 +1311,7 @@ function renderScoreboard() {
 
 function renderLog() {
   const log = $('#gameLog');
-  log.innerHTML = `<h4>Game Log</h4>${gameState.log.map(l => `<div class="log-entry">${l}</div>`).join('')}`;
+  log.innerHTML = `<h4>Spielverlauf</h4>${gameState.log.map(l => `<div class="log-entry">${l}</div>`).join('')}`;
   log.scrollTop = log.scrollHeight;
 }
 
@@ -1289,21 +1323,21 @@ function showRoundSummary() {
     const div = document.createElement('div');
     div.className = 'round-result-row';
     let label = escHtml(p.name);
-    if (p.busted) label += ' <span style="color:var(--pink)">(BUST)</span>';
-    else if (p.frozen) label += ' <span style="color:var(--blue)">(FROZEN)</span>';
+    if (p.busted) label += ' <span style="color:var(--pink)">(VERKACKT 👎)</span>';
+    else if (p.frozen) label += ' <span style="color:var(--blue)">(EINGEFROREN)</span>';
     const ptsClass = p.roundScore > 0 ? 'positive' : 'zero';
     div.innerHTML = `<span>${label}</span><span class="rr-pts ${ptsClass}">${p.busted ? '0' : '+' + p.roundScore}</span>`;
     results.appendChild(div);
   });
 
-  $('#roundOverlayTitle').textContent = `Round ${gameState.round} Complete`;
+  $('#roundOverlayTitle').textContent = `Runde ${gameState.round} vorbei`;
   $('#btnNextRound').style.display = 'inline-flex';
   if (isHost) {
-    $('#btnNextRound').textContent = 'Next Round';
+    $('#btnNextRound').textContent = 'Nächste Runde';
     $('#roundWaitMsg').textContent = '';
   } else {
     $('#btnNextRound').textContent = 'OK';
-    $('#roundWaitMsg').textContent = 'Host will start the next round';
+    $('#roundWaitMsg').textContent = 'Host startet die nächste Runde';
   }
   show('#roundOverlay');
 }
@@ -1344,7 +1378,7 @@ function showTargetSelector(card) {
     card.type === 'multiply2x' ? 'x2 MULTIPLY' :
     card.type === 'modifier' ? `+${card.value}` : '';
 
-  $('#targetTitle').textContent = `Apply ${cardName} to...`;
+  $('#targetTitle').textContent = `${cardName} anwenden auf...`;
   $('#targetCardPreview').innerHTML = `<img src="${cardImage(card)}" alt="${cardName}">`;
 
   const container = $('#targetPlayers');
@@ -1355,7 +1389,7 @@ function showTargetSelector(card) {
     if (p.busted || p.stopped) return;
     const btn = document.createElement('button');
     btn.className = 'target-player-btn' + (p.id === myId ? ' self' : '');
-    btn.textContent = p.id === myId ? `${p.name} (you)` : p.name;
+    btn.textContent = p.id === myId ? `${p.name} (du)` : p.name;
     btn.addEventListener('click', () => {
       hide('#targetOverlay');
       sendAction('applyTarget', { targetId: p.id });
@@ -1409,7 +1443,7 @@ $('#btnCreate').addEventListener('click', createGame);
 $('#btnJoin').addEventListener('click', joinGame);
 $('#hostName').addEventListener('keydown', e => { if (e.key === 'Enter') $('#btnCreate').click(); });
 $('#joinCode').addEventListener('keydown', e => { if (e.key === 'Enter') $('#btnJoin').click(); });
-$('#displayRoomCode').addEventListener('click', () => { navigator.clipboard.writeText(roomCode).then(() => toast('Copied!')); });
+$('#displayRoomCode').addEventListener('click', () => { navigator.clipboard.writeText(roomCode).then(() => toast('Kopiert!')); });
 
 $('#btnStart').addEventListener('click', () => {
   if (!isHost) return;
@@ -1424,7 +1458,7 @@ $('#btnStart').addEventListener('click', () => {
     Object.assign(p, newPlayer(p.id, p.name));
     p.score = 0;
   });
-  addLog('Game started!');
+  addLog('Spiel gestartet!');
   dealStartingCards();
   // Find first active player after deal
   for (let i = 0; i < gameState.players.length; i++) {
