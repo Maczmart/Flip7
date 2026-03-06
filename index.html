@@ -863,13 +863,9 @@ function handleAction(action, payload) {
       gameState.turnPhase = 'chooseTarget';
       broadcastState();
     } else {
-      // Number or flipThree — resolve immediately
+      // Number or flipThree — resolve immediately, then advance turn
       resolveCard(cp, card, false);
-      if (cp.busted || cp.stopped) {
-        advanceTurn();
-      } else {
-        gameState.turnPhase = 'canAct';
-      }
+      advanceTurn();
       broadcastState();
     }
   } else if (action === 'applyTarget') {
@@ -879,12 +875,7 @@ function handleAction(action, payload) {
     if (!targetPlayer || targetPlayer.busted || targetPlayer.stopped) return;
     applyCardToTarget(targetPlayer, gameState.pendingCard, cp);
     gameState.pendingCard = null;
-
-    if (cp.busted || cp.stopped) {
-      advanceTurn();
-    } else {
-      gameState.turnPhase = 'canAct';
-    }
+    advanceTurn();
     broadcastState();
   } else if (action === 'stay') {
     cp.stopped = true;
