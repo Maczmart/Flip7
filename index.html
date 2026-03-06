@@ -330,6 +330,23 @@ input:focus { border-color: var(--orange); }
 }
 .toast.show { transform: translateX(-50%) translateY(0); }
 
+/* ── Connection Status ── */
+.conn-status {
+  font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 10px;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.conn-status::before {
+  content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block;
+}
+.conn-status.connected { color: var(--green); }
+.conn-status.connected::before { background: var(--green); }
+.conn-status.connecting { color: var(--yellow); }
+.conn-status.connecting::before { background: var(--yellow); animation: pulse 1s infinite; }
+.conn-status.error { color: var(--pink); }
+.conn-status.error::before { background: var(--pink); }
+.conn-status.disconnected { color: var(--gray); }
+.conn-status.disconnected::before { background: var(--gray); }
+
 /* ── Responsive ── */
 @media (max-width: 600px) {
   .lobby-container h1 { font-size: 42px; }
@@ -344,7 +361,10 @@ input:focus { border-color: var(--orange); }
 <div id="app">
   <header>
     <img src="assets/Cheil_Logo_white.svg" alt="Cheil">
-    <span class="room-code" id="headerRoomCode"></span>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span class="conn-status" id="connStatus"></span>
+      <span class="room-code" id="headerRoomCode"></span>
+    </div>
   </header>
 
   <main>
@@ -567,18 +587,58 @@ function calcRoundScore(p) {
   return numberSum + modSum + bonus;
 }
 
-// ── PeerJS ──
+// ── Connection Status ──
+let connStatus = 'disconnected'; // disconnected, connecting, connected, error
+function setConnStatus(status, msg) {
+  connStatus = status;
+  const el = $('#connStatus');
+  if (!el) return;
+  el.className = 'conn-status ' + status;
+  el.textContent = msg || { disconnected: 'Disconnected', connecting: 'Connecting...', connected: 'Connected', error: 'Connection failed' }[status] || '';
+}
+
+// ── PeerJS with TURN servers ──
 function initPeer(id) {
   return new Promise((resolve, reject) => {
-    peer = new Peer(id, { config: { iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' }
-    ]}});
-    peer.on('open', pid => { myId = pid; resolve(pid); });
+    setConnStatus('connecting', 'Connecting to server...');
+    peer = new Peer(id, {
+      debug: 1,
+      config: { iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun.relay.metered.ca:80' },
+        // Free TURN servers from Open Relay Project (metered.ca)
+        { urls: 'turn:global.relay.metered.ca:80', username: 'e8dd65b92af91c46e4782639', credential: 'XDOhii1WW/AI+V46' },
+        { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: 'e8dd65b92af91c46e4782639', credential: 'XDOhii1WW/AI+V46' },
+        { urls: 'turn:global.relay.metered.ca:443', username: 'e8dd65b92af91c46e4782639', credential: 'XDOhii1WW/AI+V46' },
+        { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: 'e8dd65b92af91c46e4782639', credential: 'XDOhii1WW/AI+V46' },
+      ]}
+    });
+    peer.on('open', pid => {
+      myId = pid;
+      setConnStatus('connected', 'Connected');
+      resolve(pid);
+    });
+    peer.on('disconnected', () => {
+      setConnStatus('connecting', 'Reconnecting...');
+      peer.reconnect();
+    });
     peer.on('error', err => {
-      if (err.type === 'unavailable-id') reject(new Error('Room code in use. Try again.'));
-      else if (err.type === 'peer-unavailable') toast('Room not found. Check the code.');
-      else reject(err);
+      console.error('PeerJS error:', err.type, err);
+      if (err.type === 'unavailable-id') {
+        setConnStatus('error', 'Room code in use');
+        reject(new Error('Room code in use. Try again.'));
+      } else if (err.type === 'peer-unavailable') {
+        setConnStatus('error', 'Room not found');
+        toast('Room not found. Check the code and try again.');
+      } else if (err.type === 'network' || err.type === 'server-error') {
+        setConnStatus('error', 'Network error — retrying...');
+        toast('Network error. Retrying...');
+        setTimeout(() => peer.reconnect(), 2000);
+      } else {
+        setConnStatus('error', 'Error: ' + err.type);
+        reject(err);
+      }
     });
   });
 }
@@ -594,8 +654,19 @@ async function createGame() {
   gameState.targetScore = parseInt($('#targetScore').value) || 200;
   gameState.players = [newPlayer(myId, myName)];
   peer.on('connection', conn => {
-    conn.on('open', () => { conn.on('data', data => handleHostMessage(conn, data)); });
-    conn.on('close', () => { const p = gameState.players.find(p => p.id === conn.peer); if (p) addLog(`${p.name} disconnected`); });
+    console.log('Incoming connection from:', conn.peer);
+    conn.on('open', () => {
+      console.log('Connection opened:', conn.peer);
+      conn.on('data', data => handleHostMessage(conn, data));
+    });
+    conn.on('close', () => {
+      const p = gameState.players.find(p => p.id === conn.peer);
+      if (p) addLog(`${p.name} disconnected`);
+      delete connections[conn.peer];
+    });
+    conn.on('error', err => {
+      console.error('Connection error from peer:', conn.peer, err);
+    });
   });
   showWaitingRoom();
 }
@@ -608,13 +679,39 @@ async function joinGame() {
   if (!code.match(/^FLIP-[A-Z0-9]{4}$/)) { toast('Invalid room code'); return; }
   roomCode = code; myName = name;
   try { await initPeer(undefined); } catch (e) { toast(e.message); return; }
-  hostConn = peer.connect('flip7-' + roomCode, { reliable: true });
+
+  setConnStatus('connecting', 'Connecting to room...');
+  showWaitingRoom();
+
+  const hostId = 'flip7-' + roomCode;
+  hostConn = peer.connect(hostId, { reliable: true, serialization: 'json' });
+
+  // Timeout if connection doesn't open
+  const connTimeout = setTimeout(() => {
+    if (connStatus !== 'connected') {
+      setConnStatus('error', 'Could not reach host — try again');
+      toast('Connection timed out. The host may not be reachable.');
+    }
+  }, 15000);
+
   hostConn.on('open', () => {
+    clearTimeout(connTimeout);
+    setConnStatus('connected', 'Connected to host');
     hostConn.send({ type: 'join', name: myName, id: myId });
     hostConn.on('data', data => handlePlayerMessage(data));
   });
-  hostConn.on('close', () => toast('Disconnected from host'));
-  showWaitingRoom();
+
+  hostConn.on('close', () => {
+    setConnStatus('error', 'Disconnected from host');
+    toast('Disconnected from host');
+  });
+
+  hostConn.on('error', err => {
+    clearTimeout(connTimeout);
+    console.error('Connection error:', err);
+    setConnStatus('error', 'Connection failed');
+    toast('Could not connect to room. Check the code.');
+  });
 }
 
 // ── Host: Handle Messages ──
