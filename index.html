@@ -853,7 +853,7 @@ function dealStartingCards() {
 // ── Host: Resolve a drawn card for a player ──
 // Cards that let the player choose a target
 function isTargetableCard(card) {
-  return card && ['freeze', 'secondChance', 'multiply2x', 'modifier'].includes(card.type);
+  return card && ['freeze', 'multiply2x', 'modifier'].includes(card.type);
 }
 
 // Resolve a card immediately (no delay — used during deal and for non-event cards)
@@ -1018,7 +1018,30 @@ function handleAction(action, payload) {
     const card = gameState.deck.pop();
     gameState.lastFlipped = card;
 
-    if (isTargetableCard(card)) {
+    if (card.type === 'secondChance') {
+      // Auto-apply to self, show overlay to everyone
+      cp.hasSecondChance = true;
+      addLog(`<span class="log-action">${cp.name}</span> zog <span class="log-action">ZWEITE CHANCE</span> — Schutzschild aktiviert!`);
+      const scSubs = [
+        `${cp.name} hat jetzt ein Schutzschild. Wie süß.`,
+        `${cp.name} darf sich einmal verkalkulieren. Einmal.`,
+        `${cp.name} hat eine Zweite Chance. Wird trotzdem verkacken.`,
+        `${cp.name} fühlt sich jetzt sicher. Zu Unrecht.`,
+      ];
+      gameState.event = { type: 'action', icon: '🛡️', title: 'ZWEITE CHANCE!', sub: pickRandom(scSubs) };
+      gameState.turnPhase = 'revealing';
+      gameState._revealStart = Date.now();
+      broadcastState();
+      if (revealTimer) clearTimeout(revealTimer);
+      revealTimer = setTimeout(() => {
+        revealTimer = null;
+        if (gameState.turnPhase !== 'revealing') return;
+        gameState.event = null;
+        gameState._revealStart = null;
+        advanceTurn();
+        broadcastState();
+      }, 2500);
+    } else if (isTargetableCard(card)) {
       // Store pending card — player must choose target
       gameState.pendingCard = card;
       gameState.turnPhase = 'chooseTarget';
@@ -1063,17 +1086,14 @@ function handleAction(action, payload) {
 
     // Build event for the action card application
     const cardName = card.type === 'freeze' ? 'FREEZE' :
-      card.type === 'secondChance' ? 'SECOND CHANCE' :
       card.type === 'multiply2x' ? 'x2 MULTIPLIKATOR' : `+${card.value}`;
     const icon = card.type === 'freeze' ? '🥶' :
-      card.type === 'secondChance' ? '🛡️' :
       card.type === 'multiply2x' ? '✖️' : '➕';
     const eventType = card.type === 'freeze' ? 'freeze' : 'action';
     const dn = cp.name, tn = targetPlayer.name;
     const sub = card.type === 'freeze' ? pickRandom(freezeSubs)(dn, tn)
       : card.type === 'multiply2x' ? pickRandom(multiplySubs)(dn, tn)
-      : card.type === 'modifier' ? pickRandom(modifierSubs)(dn, tn, card.value)
-      : targetPlayer.id === cp.id ? `${dn} gibt sich selbst eine Zweite Chance.` : `${dn} gibt ${tn} eine Zweite Chance. Gönnerhaft.`;
+      : pickRandom(modifierSubs)(dn, tn, card.value);
     gameState.event = { type: eventType, icon, title: cardName, sub };
 
     applyCardToTarget(targetPlayer, card, cp);
@@ -1090,7 +1110,7 @@ function handleAction(action, payload) {
       gameState._revealStart = null;
       advanceTurn();
       broadcastState();
-    }, 2200);
+    }, 2800);
   } else if (action === 'stay') {
     cp.stopped = true;
     cp.roundScore = calcRoundScore(cp);
@@ -1443,8 +1463,7 @@ function hideEventOverlay() {
 
 function showTargetSelector(card) {
   const cardName = card.type === 'freeze' ? 'FREEZE' :
-    card.type === 'secondChance' ? 'SECOND CHANCE' :
-    card.type === 'multiply2x' ? 'x2 MULTIPLY' :
+    card.type === 'multiply2x' ? 'x2 MULTIPLIKATOR' :
     card.type === 'modifier' ? `+${card.value}` : '';
 
   $('#targetTitle').textContent = `${cardName} anwenden auf...`;
