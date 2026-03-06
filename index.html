@@ -265,15 +265,19 @@ input:focus { border-color: var(--orange); }
 
 /* ── Game Log ── */
 .game-log {
-  background: var(--panel); border-radius: var(--radius); padding: 12px;
-  max-height: 100px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.06);
+  background: var(--panel); border-radius: var(--radius); padding: 16px;
+  max-height: 180px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08);
 }
-.game-log h4 { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--gray); margin-bottom: 6px; }
-.game-log .log-entry { font-size: 11px; color: #999; padding: 1px 0; }
-.game-log .log-entry .log-highlight { color: var(--orange); font-weight: 600; }
-.game-log .log-entry .log-bust { color: var(--pink); font-weight: 600; }
-.game-log .log-entry .log-freeze { color: var(--blue); font-weight: 600; }
-.game-log .log-entry .log-action { color: var(--yellow); font-weight: 600; }
+.game-log h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--gray); margin-bottom: 8px; font-weight: 700; }
+.game-log .log-entry {
+  font-size: 14px; color: rgba(255,255,255,0.75); padding: 5px 10px; margin: 3px 0;
+  border-radius: 6px; background: rgba(255,255,255,0.03); border-left: 3px solid transparent;
+}
+.game-log .log-entry:last-child { background: rgba(255,255,255,0.06); border-left-color: var(--orange); color: #fff; font-weight: 500; }
+.game-log .log-entry .log-highlight { color: var(--orange); font-weight: 700; }
+.game-log .log-entry .log-bust { color: var(--pink); font-weight: 700; }
+.game-log .log-entry .log-freeze { color: var(--blue); font-weight: 700; }
+.game-log .log-entry .log-action { color: var(--yellow); font-weight: 700; }
 
 /* ── Overlays ── */
 .overlay {
@@ -334,6 +338,56 @@ input:focus { border-color: var(--orange); }
 .target-player-btn:hover { border-color: var(--orange); background: rgba(255,115,0,0.15); transform: scale(1.05); }
 .target-player-btn.self { border-color: var(--green); }
 .target-player-btn.self:hover { border-color: var(--green); background: rgba(150,250,0,0.15); }
+
+/* ── Event Overlay (Bust, Freeze, Actions) ── */
+.event-overlay {
+  position: fixed; inset: 0; z-index: 150; display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.75); opacity: 0; pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+.event-overlay.visible { opacity: 1; pointer-events: auto; }
+.event-box {
+  text-align: center; transform: scale(0.5); transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  padding: 40px 50px; border-radius: 20px; max-width: 400px;
+}
+.event-overlay.visible .event-box { transform: scale(1); }
+
+.event-box.bust { background: linear-gradient(135deg, #3a0025, #1a0012); border: 3px solid var(--pink); }
+.event-box.bust .event-icon { font-size: 72px; animation: eventShake 0.6s ease; }
+.event-box.bust .event-title { color: var(--pink); font-size: 36px; font-weight: 800; letter-spacing: 4px; margin: 8px 0; }
+.event-box.bust .event-sub { color: rgba(255,255,255,0.7); font-size: 16px; }
+
+.event-box.freeze { background: linear-gradient(135deg, #001a3a, #000d1a); border: 3px solid var(--blue); }
+.event-box.freeze .event-icon { font-size: 72px; animation: eventPulse 0.8s ease; }
+.event-box.freeze .event-title { color: var(--blue); font-size: 36px; font-weight: 800; letter-spacing: 4px; margin: 8px 0; }
+.event-box.freeze .event-sub { color: rgba(255,255,255,0.7); font-size: 16px; }
+
+.event-box.action { background: linear-gradient(135deg, #1a2a00, #0d1a00); border: 3px solid var(--green); }
+.event-box.action .event-icon { font-size: 72px; animation: eventPulse 0.8s ease; }
+.event-box.action .event-title { color: var(--green); font-size: 32px; font-weight: 800; letter-spacing: 2px; margin: 8px 0; }
+.event-box.action .event-sub { color: rgba(255,255,255,0.7); font-size: 16px; }
+
+.event-box.bonus { background: linear-gradient(135deg, #2a2a00, #1a1a00); border: 3px solid var(--yellow); }
+.event-box.bonus .event-icon { font-size: 72px; animation: eventPulse 0.8s ease; }
+.event-box.bonus .event-title { color: var(--yellow); font-size: 32px; font-weight: 800; margin: 8px 0; }
+.event-box.bonus .event-sub { color: rgba(255,255,255,0.7); font-size: 16px; }
+
+.event-card-img { width: 100px; height: 140px; border-radius: 10px; margin: 0 auto 12px; display: block;
+  box-shadow: 0 0 30px rgba(255,255,255,0.2); }
+
+@keyframes eventShake {
+  0%, 100% { transform: translateX(0) rotate(0); }
+  15% { transform: translateX(-12px) rotate(-5deg); }
+  30% { transform: translateX(12px) rotate(5deg); }
+  45% { transform: translateX(-8px) rotate(-3deg); }
+  60% { transform: translateX(8px) rotate(3deg); }
+  75% { transform: translateX(-4px) rotate(-1deg); }
+}
+@keyframes eventPulse {
+  0% { transform: scale(0.3); opacity: 0; }
+  50% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
 
 .toast {
   position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
@@ -491,6 +545,15 @@ input:focus { border-color: var(--orange); }
   </main>
 </div>
 
+    <!-- Event Overlay (Bust, Freeze, Actions) -->
+    <div class="event-overlay" id="eventOverlay">
+      <div class="event-box" id="eventBox">
+        <div class="event-icon" id="eventIcon"></div>
+        <div class="event-title" id="eventTitle"></div>
+        <div class="event-sub" id="eventSub"></div>
+      </div>
+    </div>
+
     <!-- Target Selection Modal -->
     <div class="overlay" id="targetOverlay">
       <div class="overlay-content target-select">
@@ -584,6 +647,7 @@ let gameState = {
   flipThreeRemaining: 0,
   lastFlipped: null,
   pendingCard: null,
+  event: null, // { type: 'bust'|'freeze'|'action'|'bonus', player, card, sub }
   log: []
 };
 
@@ -774,7 +838,7 @@ function dealStartingCards() {
       gameState.lastFlipped = card;
       applyCardToTarget(p, card, p);
     } else {
-      resolveCard(p, card, true);
+      resolveCardInstant(p, card);
     }
   }
 }
@@ -785,7 +849,8 @@ function isTargetableCard(card) {
   return card && ['freeze', 'secondChance', 'multiply2x', 'modifier'].includes(card.type);
 }
 
-function resolveCard(player, card, isDeal) {
+// Resolve a card immediately (no delay — used during deal and for non-event cards)
+function resolveCardInstant(player, card) {
   gameState.lastFlipped = card;
 
   if (card.type === 'number') {
@@ -815,10 +880,34 @@ function resolveCard(player, card, isDeal) {
     for (let i = 0; i < 3; i++) {
       if (player.busted || player.stopped || gameState.deck.length === 0) break;
       const nextCard = gameState.deck.pop();
-      resolveCard(player, nextCard, false);
+      resolveCardInstant(player, nextCard);
     }
   }
-  // freeze, secondChance, multiply2x, modifier are resolved via applyCardToTarget
+}
+
+// Check what event a number card would cause (before resolving)
+function detectNumberEvent(player, card) {
+  if (card.type !== 'number') return null;
+  const hasDuplicate = player.numberCards.some(c => c.value === card.value);
+  if (hasDuplicate) {
+    if (player.hasSecondChance) {
+      return { type: 'action', icon: '🛡️', title: 'SECOND CHANCE!', sub: `${player.name} is saved from bust!` };
+    } else {
+      return { type: 'bust', icon: '💥', title: 'BUST!', sub: `${player.name} drew a duplicate ${card.value}!` };
+    }
+  }
+  // Check if this would give 7 unique
+  const unique = new Set(player.numberCards.map(c => c.value));
+  unique.add(card.value);
+  if (unique.size >= 7) {
+    return { type: 'bonus', icon: '⭐', title: 'FLIP 7!', sub: `${player.name} collected 7 unique numbers! +15 bonus!` };
+  }
+  return null;
+}
+
+// Detect event for flipThree (check all 3 cards)
+function detectFlipThreeEvent(player) {
+  return { type: 'action', icon: '🃏', title: 'FLIP THREE!', sub: `${player.name} draws 3 more cards!` };
 }
 
 // Apply a targetable action card to a chosen player
@@ -863,20 +952,60 @@ function handleAction(action, payload) {
       gameState.turnPhase = 'chooseTarget';
       broadcastState();
     } else {
-      // Number or flipThree — resolve immediately, then advance turn
-      resolveCard(cp, card, false);
-      advanceTurn();
-      broadcastState();
+      // Check for dramatic events (bust, second chance save, flip7, flipThree)
+      const event = card.type === 'flipThree' ? detectFlipThreeEvent(cp) : detectNumberEvent(cp, card);
+
+      if (event) {
+        // Phase 1: show the card + event, don't resolve yet
+        gameState.event = event;
+        gameState.turnPhase = 'revealing';
+        if (card.type === 'number') cp.numberCards.push(card);
+        broadcastState();
+
+        // Phase 2: after delay, resolve the actual effect
+        setTimeout(() => {
+          gameState.event = null;
+          if (card.type === 'number') cp.numberCards.pop();
+          resolveCardInstant(cp, card);
+          advanceTurn();
+          broadcastState();
+        }, 2500);
+      } else {
+        // Normal card, no drama
+        resolveCardInstant(cp, card);
+        advanceTurn();
+        broadcastState();
+      }
     }
   } else if (action === 'applyTarget') {
-    // Player chose a target for their pending action card
     if (!gameState.pendingCard) return;
     const targetPlayer = gameState.players.find(p => p.id === payload.targetId);
     if (!targetPlayer || targetPlayer.busted || targetPlayer.stopped) return;
-    applyCardToTarget(targetPlayer, gameState.pendingCard, cp);
+    const card = gameState.pendingCard;
+
+    // Build event for the action card application
+    const cardName = card.type === 'freeze' ? 'FREEZE' :
+      card.type === 'secondChance' ? 'SECOND CHANCE' :
+      card.type === 'multiply2x' ? 'x2 MULTIPLY' : `+${card.value}`;
+    const icon = card.type === 'freeze' ? '🥶' :
+      card.type === 'secondChance' ? '🛡️' :
+      card.type === 'multiply2x' ? '✖️' : '➕';
+    const eventType = card.type === 'freeze' ? 'freeze' : 'action';
+    const sub = targetPlayer.id === cp.id
+      ? `${cp.name} uses ${cardName} on themselves!`
+      : `${cp.name} plays ${cardName} on ${targetPlayer.name}!`;
+    gameState.event = { type: eventType, icon, title: cardName, sub };
+
+    applyCardToTarget(targetPlayer, card, cp);
     gameState.pendingCard = null;
-    advanceTurn();
+    gameState.turnPhase = 'revealing';
     broadcastState();
+
+    setTimeout(() => {
+      gameState.event = null;
+      advanceTurn();
+      broadcastState();
+    }, 2200);
   } else if (action === 'stay') {
     cp.stopped = true;
     cp.roundScore = calcRoundScore(cp);
@@ -924,6 +1053,7 @@ function startNextRound() {
   gameState.deck = buildDeck();
   gameState.lastFlipped = null;
   gameState.pendingCard = null;
+  gameState.event = null;
   gameState.turnPhase = 'canAct';
   gameState.log = [];
 
@@ -970,6 +1100,13 @@ function sendAction(action, payload = {}) {
 // ═══════════════════════════════════════
 
 function renderGame() {
+  // Event overlay
+  if (gameState.event) {
+    showEventOverlay(gameState.event);
+  } else {
+    hideEventOverlay();
+  }
+
   switch (gameState.phase) {
     case 'lobby': renderWaitingRoom(); break;
     case 'playing': showScreen('gameScreen'); renderBoard(); break;
@@ -1017,6 +1154,7 @@ function renderBoard() {
   const cp = gameState.players[gameState.currentPlayerIdx];
   const isMyTurn = cp && cp.id === myId && gameState.phase === 'playing';
   const choosingTarget = gameState.turnPhase === 'chooseTarget' && isMyTurn;
+  const isRevealing = gameState.turnPhase === 'revealing';
 
   // Turn banner
   const banner = $('#turnBanner');
@@ -1032,7 +1170,7 @@ function renderBoard() {
   const flipCard = $('#flipCard');
   const flipHint = $('#flipHint');
   const flipInner = $('#flipCardInner');
-  const canFlip = isMyTurn && !me.busted && !me.stopped && !choosingTarget;
+  const canFlip = isMyTurn && !me.busted && !me.stopped && !choosingTarget && !isRevealing;
 
   // Reset flip animation state
   flipInner.classList.remove('is-flipped');
@@ -1184,6 +1322,20 @@ function showFinalResults() {
   });
   show('#finalOverlay');
   spawnConfetti();
+}
+
+function showEventOverlay(event) {
+  const overlay = $('#eventOverlay');
+  const box = $('#eventBox');
+  box.className = 'event-box ' + event.type;
+  $('#eventIcon').textContent = event.icon;
+  $('#eventTitle').textContent = event.title;
+  $('#eventSub').textContent = event.sub;
+  overlay.classList.add('visible');
+}
+
+function hideEventOverlay() {
+  $('#eventOverlay').classList.remove('visible');
 }
 
 function showTargetSelector(card) {
