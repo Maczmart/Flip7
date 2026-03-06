@@ -22,10 +22,10 @@
   --white: #FFFFFF;
   --gray: #888888;
   --radius: 12px;
-  --card-w: 90px;
-  --card-h: 126px;
-  --card-w-sm: 36px;
-  --card-h-sm: 50px;
+  --card-w: 110px;
+  --card-h: 154px;
+  --card-w-sm: 44px;
+  --card-h-sm: 62px;
 }
 
 html, body {
@@ -149,7 +149,7 @@ input:focus { border-color: var(--orange); }
 }
 
 .flip-card {
-  width: 120px; height: 168px; perspective: 1000px; cursor: pointer;
+  width: 140px; height: 196px; perspective: 1000px; cursor: pointer;
   transition: transform 0.2s;
 }
 .flip-card:hover:not(.disabled) { transform: scale(1.05); }
@@ -321,6 +321,20 @@ input:focus { border-color: var(--orange); }
   animation: confetti-fall linear forwards;
 }
 
+/* ── Target Selection Modal ── */
+.target-select { text-align: center; }
+.target-card-preview { display: flex; justify-content: center; margin: 16px 0; }
+.target-card-preview img { width: 120px; height: 168px; border-radius: 10px; box-shadow: 0 4px 20px rgba(255,115,0,0.4); }
+.target-players { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 12px; }
+.target-player-btn {
+  background: var(--panel-light); border: 2px solid rgba(255,255,255,0.1); border-radius: 10px;
+  color: var(--white); padding: 12px 24px; font-size: 15px; font-weight: 700; cursor: pointer;
+  transition: all 0.2s; font-family: inherit; min-width: 120px;
+}
+.target-player-btn:hover { border-color: var(--orange); background: rgba(255,115,0,0.15); transform: scale(1.05); }
+.target-player-btn.self { border-color: var(--green); }
+.target-player-btn.self:hover { border-color: var(--green); background: rgba(150,250,0,0.15); }
+
 .toast {
   position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
   background: var(--panel-light); color: var(--white); padding: 10px 22px;
@@ -351,8 +365,8 @@ input:focus { border-color: var(--orange); }
   .lobby-container h1 { font-size: 42px; }
   .lobby-card { width: 100%; }
   .lobby-actions { flex-direction: column; align-items: center; }
-  :root { --card-w: 70px; --card-h: 98px; }
-  .flip-card { width: 100px; height: 140px; }
+  :root { --card-w: 85px; --card-h: 119px; }
+  .flip-card { width: 110px; height: 154px; }
 }
 </style>
 </head>
@@ -477,6 +491,15 @@ input:focus { border-color: var(--orange); }
   </main>
 </div>
 
+    <!-- Target Selection Modal -->
+    <div class="overlay" id="targetOverlay">
+      <div class="overlay-content target-select">
+        <h2 id="targetTitle">Apply to whom?</h2>
+        <div class="target-card-preview" id="targetCardPreview"></div>
+        <div class="target-players" id="targetPlayers"></div>
+      </div>
+    </div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -560,6 +583,7 @@ let gameState = {
   turnPhase: 'waiting', // waiting, canAct, flipThree
   flipThreeRemaining: 0,
   lastFlipped: null,
+  pendingCard: null,
   log: []
 };
 
@@ -721,8 +745,17 @@ function handleHostAction(data) {
 
 // ── Player: Handle State Updates ──
 function handlePlayerMessage(data) {
+  const prevPhase = gameState.turnPhase;
   gameState = data;
   renderGame();
+  // If it's our turn and we need to choose a target, show the selector after flip animation
+  const cp = gameState.players[gameState.currentPlayerIdx];
+  if (cp && cp.id === myId && gameState.turnPhase === 'chooseTarget' && gameState.pendingCard && prevPhase !== 'chooseTarget') {
+    // Animate the card flip, then show target selector
+    doFlipAnimation(() => {
+      showTargetSelector(gameState.pendingCard);
+    });
+  }
 }
 
 // ── Broadcast State (Host → All Players) ──
@@ -736,11 +769,22 @@ function dealStartingCards() {
   for (const p of gameState.players) {
     if (gameState.deck.length === 0) return;
     const card = gameState.deck.pop();
-    resolveCard(p, card, true);
+    if (isTargetableCard(card)) {
+      // During deal, auto-apply to the dealt player
+      gameState.lastFlipped = card;
+      applyCardToTarget(p, card, p);
+    } else {
+      resolveCard(p, card, true);
+    }
   }
 }
 
 // ── Host: Resolve a drawn card for a player ──
+// Cards that let the player choose a target
+function isTargetableCard(card) {
+  return card && ['freeze', 'secondChance', 'multiply2x', 'modifier'].includes(card.type);
+}
+
 function resolveCard(player, card, isDeal) {
   gameState.lastFlipped = card;
 
@@ -748,10 +792,8 @@ function resolveCard(player, card, isDeal) {
     const hasDuplicate = player.numberCards.some(c => c.value === card.value);
     if (hasDuplicate) {
       if (player.hasSecondChance) {
-        // Second Chance saves from bust — discard both the duplicate and Second Chance
         player.hasSecondChance = false;
         addLog(`<span class="log-highlight">${player.name}</span> flipped ${card.value} (duplicate) — <span class="log-action">SECOND CHANCE</span> saved them!`);
-        // Don't add the duplicate card
       } else {
         player.numberCards.push({ ...card, bustCard: true });
         player.busted = true;
@@ -761,7 +803,6 @@ function resolveCard(player, card, isDeal) {
     } else {
       player.numberCards.push(card);
       addLog(`<span class="log-highlight">${player.name}</span> flipped a <span class="log-highlight">${card.value}</span>`);
-      // Check 7 unique numbers
       const unique = new Set(player.numberCards.map(c => c.value));
       if (unique.size >= 7) {
         player.stopped = true;
@@ -769,29 +810,37 @@ function resolveCard(player, card, isDeal) {
         addLog(`<span class="log-action">${player.name}</span> collected 7 unique numbers! +15 bonus!`);
       }
     }
-  } else if (card.type === 'freeze') {
-    // Freeze: player must immediately stay
-    player.frozen = true;
-    player.stopped = true;
-    player.roundScore = calcRoundScore(player);
-    addLog(`<span class="log-freeze">${player.name}</span> drew <span class="log-freeze">FREEZE</span> — locked in with ${player.roundScore} pts`);
-  } else if (card.type === 'secondChance') {
-    player.hasSecondChance = true;
-    addLog(`<span class="log-action">${player.name}</span> drew <span class="log-action">SECOND CHANCE</span>`);
   } else if (card.type === 'flipThree') {
     addLog(`<span class="log-action">${player.name}</span> drew <span class="log-action">FLIP THREE</span> — drawing 3 more cards!`);
-    // Draw 3 more cards immediately
     for (let i = 0; i < 3; i++) {
       if (player.busted || player.stopped || gameState.deck.length === 0) break;
       const nextCard = gameState.deck.pop();
       resolveCard(player, nextCard, false);
     }
+  }
+  // freeze, secondChance, multiply2x, modifier are resolved via applyCardToTarget
+}
+
+// Apply a targetable action card to a chosen player
+function applyCardToTarget(target, card, drawer) {
+  if (card.type === 'freeze') {
+    target.frozen = true;
+    target.stopped = true;
+    target.roundScore = calcRoundScore(target);
+    const who = target.id === drawer.id ? '' : ` on <span class="log-highlight">${target.name}</span>`;
+    addLog(`<span class="log-freeze">${drawer.name}</span> played <span class="log-freeze">FREEZE</span>${who} — locked in with ${target.roundScore} pts`);
+  } else if (card.type === 'secondChance') {
+    target.hasSecondChance = true;
+    const who = target.id === drawer.id ? '' : ` to <span class="log-highlight">${target.name}</span>`;
+    addLog(`<span class="log-action">${drawer.name}</span> gave <span class="log-action">SECOND CHANCE</span>${who}`);
   } else if (card.type === 'multiply2x') {
-    player.hasMultiply2x = true;
-    addLog(`<span class="log-action">${player.name}</span> drew <span class="log-action">x2 MULTIPLY</span>`);
+    target.hasMultiply2x = true;
+    const who = target.id === drawer.id ? '' : ` to <span class="log-highlight">${target.name}</span>`;
+    addLog(`<span class="log-action">${drawer.name}</span> gave <span class="log-action">x2 MULTIPLY</span>${who}`);
   } else if (card.type === 'modifier') {
-    player.modifiers.push(card.value);
-    addLog(`<span class="log-action">${player.name}</span> drew <span class="log-action">+${card.value}</span>`);
+    target.modifiers.push(card.value);
+    const who = target.id === drawer.id ? '' : ` to <span class="log-highlight">${target.name}</span>`;
+    addLog(`<span class="log-action">${drawer.name}</span> gave <span class="log-action">+${card.value}</span>${who}`);
   }
 }
 
@@ -806,7 +855,30 @@ function handleAction(action, payload) {
       addLog('Deck reshuffled');
     }
     const card = gameState.deck.pop();
-    resolveCard(cp, card, false);
+    gameState.lastFlipped = card;
+
+    if (isTargetableCard(card)) {
+      // Store pending card — player must choose target
+      gameState.pendingCard = card;
+      gameState.turnPhase = 'chooseTarget';
+      broadcastState();
+    } else {
+      // Number or flipThree — resolve immediately
+      resolveCard(cp, card, false);
+      if (cp.busted || cp.stopped) {
+        advanceTurn();
+      } else {
+        gameState.turnPhase = 'canAct';
+      }
+      broadcastState();
+    }
+  } else if (action === 'applyTarget') {
+    // Player chose a target for their pending action card
+    if (!gameState.pendingCard) return;
+    const targetPlayer = gameState.players.find(p => p.id === payload.targetId);
+    if (!targetPlayer || targetPlayer.busted || targetPlayer.stopped) return;
+    applyCardToTarget(targetPlayer, gameState.pendingCard, cp);
+    gameState.pendingCard = null;
 
     if (cp.busted || cp.stopped) {
       advanceTurn();
@@ -860,6 +932,7 @@ function startNextRound() {
   gameState.phase = 'playing';
   gameState.deck = buildDeck();
   gameState.lastFlipped = null;
+  gameState.pendingCard = null;
   gameState.turnPhase = 'canAct';
   gameState.log = [];
 
@@ -952,6 +1025,7 @@ function renderBoard() {
   const me = gameState.players.find(p => p.id === myId);
   const cp = gameState.players[gameState.currentPlayerIdx];
   const isMyTurn = cp && cp.id === myId && gameState.phase === 'playing';
+  const choosingTarget = gameState.turnPhase === 'chooseTarget' && isMyTurn;
 
   // Turn banner
   const banner = $('#turnBanner');
@@ -959,6 +1033,7 @@ function renderBoard() {
   if (me && me.busted) { banner.textContent = 'You busted this round!'; banner.classList.add('bust'); }
   else if (me && me.frozen) { banner.textContent = `Frozen! Banked ${me.roundScore} pts`; banner.classList.add('frozen'); }
   else if (me && me.stopped) { banner.textContent = `Stayed — secured ${me.roundScore} pts`; banner.classList.add('stopped'); }
+  else if (choosingTarget) { banner.textContent = 'Choose a player to apply the card to!'; banner.classList.add('your-turn'); }
   else if (isMyTurn) { banner.textContent = 'Your turn — Flip or Stay?'; banner.classList.add('your-turn'); }
   else if (cp) { banner.textContent = `${cp.name}'s turn...`; banner.classList.add('other-turn'); }
 
@@ -966,7 +1041,7 @@ function renderBoard() {
   const flipCard = $('#flipCard');
   const flipHint = $('#flipHint');
   const flipInner = $('#flipCardInner');
-  const canFlip = isMyTurn && !me.busted && !me.stopped;
+  const canFlip = isMyTurn && !me.busted && !me.stopped && !choosingTarget;
 
   // Reset flip animation state
   flipInner.classList.remove('is-flipped');
@@ -1120,6 +1195,34 @@ function showFinalResults() {
   spawnConfetti();
 }
 
+function showTargetSelector(card) {
+  const cardName = card.type === 'freeze' ? 'FREEZE' :
+    card.type === 'secondChance' ? 'SECOND CHANCE' :
+    card.type === 'multiply2x' ? 'x2 MULTIPLY' :
+    card.type === 'modifier' ? `+${card.value}` : '';
+
+  $('#targetTitle').textContent = `Apply ${cardName} to...`;
+  $('#targetCardPreview').innerHTML = `<img src="${cardImage(card)}" alt="${cardName}">`;
+
+  const container = $('#targetPlayers');
+  container.innerHTML = '';
+
+  // Show all active (non-busted, non-stopped) players as targets
+  gameState.players.forEach(p => {
+    if (p.busted || p.stopped) return;
+    const btn = document.createElement('button');
+    btn.className = 'target-player-btn' + (p.id === myId ? ' self' : '');
+    btn.textContent = p.id === myId ? `${p.name} (you)` : p.name;
+    btn.addEventListener('click', () => {
+      hide('#targetOverlay');
+      sendAction('applyTarget', { targetId: p.id });
+    });
+    container.appendChild(btn);
+  });
+
+  show('#targetOverlay');
+}
+
 function spawnConfetti() {
   const colors = ['#FF7300', '#96FA00', '#FA50DC', '#FFF000', '#4488ff'];
   for (let i = 0; i < 80; i++) {
@@ -1138,12 +1241,11 @@ function spawnConfetti() {
 }
 
 // ── Flip Animation ──
-function doFlipAnimation() {
+function doFlipAnimation(callback) {
   if (flipAnimating) return;
   flipAnimating = true;
 
   const flipInner = $('#flipCardInner');
-  // Set the front face image to the last flipped card
   if (gameState.lastFlipped) {
     $('#flipCardImg').src = cardImage(gameState.lastFlipped);
   }
@@ -1152,7 +1254,8 @@ function doFlipAnimation() {
   setTimeout(() => {
     flipInner.classList.remove('is-flipped');
     flipAnimating = false;
-  }, 1200);
+    if (callback) callback();
+  }, 1400);
 }
 
 // ═══════════════════════════════════════
@@ -1197,11 +1300,18 @@ $('#flipCard').addEventListener('click', () => {
   const cp = gameState.players[gameState.currentPlayerIdx];
   if (!me || !cp || cp.id !== myId || me.busted || me.stopped || gameState.phase !== 'playing') return;
 
-  // Send flip action, then animate
+  // Send flip action — state updates, then we animate to reveal the card
   sendAction('flip');
 
-  // Trigger flip animation after a tiny delay so state has updated
-  setTimeout(() => doFlipAnimation(), 50);
+  // Animate after brief delay so state has the lastFlipped card
+  setTimeout(() => {
+    doFlipAnimation(() => {
+      // After animation, show target selector if needed
+      if (gameState.turnPhase === 'chooseTarget' && gameState.pendingCard) {
+        showTargetSelector(gameState.pendingCard);
+      }
+    });
+  }, 50);
 });
 
 $('#btnStay').addEventListener('click', () => sendAction('stay'));
