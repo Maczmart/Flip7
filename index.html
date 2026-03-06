@@ -588,55 +588,78 @@ function calcRoundScore(p) {
 }
 
 // ── Connection Status ──
-let connStatus = 'disconnected'; // disconnected, connecting, connected, error
+let connStatus = 'disconnected';
 function setConnStatus(status, msg) {
   connStatus = status;
   const el = $('#connStatus');
   if (!el) return;
   el.className = 'conn-status ' + status;
-  el.textContent = msg || { disconnected: 'Disconnected', connecting: 'Connecting...', connected: 'Connected', error: 'Connection failed' }[status] || '';
+  el.textContent = msg || '';
 }
 
-// ── PeerJS with TURN servers ──
+// ── ICE Servers (STUN + TURN) ──
+function getIceServers() {
+  return [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    // Free TURN relay (numb.viagenie.ca — public open-source WebRTC TURN)
+    { urls: 'turn:numb.viagenie.ca', username: 'webrtc@live.com', credential: 'muazkh' },
+    { urls: 'turn:numb.viagenie.ca?transport=tcp', username: 'webrtc@live.com', credential: 'muazkh' },
+  ];
+}
+
+// ── PeerJS ──
 function initPeer(id) {
+  const iceServers = getIceServers();
+
   return new Promise((resolve, reject) => {
-    setConnStatus('connecting', 'Connecting to server...');
+    setConnStatus('connecting', 'Connecting...');
     peer = new Peer(id, {
-      debug: 1,
-      config: { iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun.relay.metered.ca:80' },
-        // Free TURN servers from Open Relay Project (metered.ca)
-        { urls: 'turn:global.relay.metered.ca:80', username: 'e8dd65b92af91c46e4782639', credential: 'XDOhii1WW/AI+V46' },
-        { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: 'e8dd65b92af91c46e4782639', credential: 'XDOhii1WW/AI+V46' },
-        { urls: 'turn:global.relay.metered.ca:443', username: 'e8dd65b92af91c46e4782639', credential: 'XDOhii1WW/AI+V46' },
-        { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: 'e8dd65b92af91c46e4782639', credential: 'XDOhii1WW/AI+V46' },
-      ]}
+      host: '0.peerjs.com',
+      port: 443,
+      secure: true,
+      path: '/',
+      debug: 2,
+      config: { iceServers }
     });
+
+    const timeout = setTimeout(() => {
+      setConnStatus('error', 'Server unreachable');
+      toast('Could not reach PeerJS server. Check your internet connection.');
+      reject(new Error('PeerJS server timeout'));
+    }, 12000);
+
     peer.on('open', pid => {
+      clearTimeout(timeout);
       myId = pid;
-      setConnStatus('connected', 'Connected');
+      setConnStatus('connected', 'Online');
+      console.log('Registered as:', pid);
       resolve(pid);
     });
+
     peer.on('disconnected', () => {
       setConnStatus('connecting', 'Reconnecting...');
-      peer.reconnect();
+      if (!peer.destroyed) peer.reconnect();
     });
+
     peer.on('error', err => {
+      clearTimeout(timeout);
       console.error('PeerJS error:', err.type, err);
       if (err.type === 'unavailable-id') {
         setConnStatus('error', 'Room code in use');
         reject(new Error('Room code in use. Try again.'));
       } else if (err.type === 'peer-unavailable') {
         setConnStatus('error', 'Room not found');
-        toast('Room not found. Check the code and try again.');
-      } else if (err.type === 'network' || err.type === 'server-error') {
-        setConnStatus('error', 'Network error — retrying...');
-        toast('Network error. Retrying...');
-        setTimeout(() => peer.reconnect(), 2000);
+        toast('Room not found. Is the host still in the lobby?');
+      } else if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error' || err.type === 'socket-closed') {
+        setConnStatus('error', 'Network error');
+        toast('Network error. Check your connection.');
+        if (!peer.destroyed) setTimeout(() => peer.reconnect(), 3000);
       } else {
-        setConnStatus('error', 'Error: ' + err.type);
+        setConnStatus('error', err.type);
         reject(err);
       }
     });
@@ -680,38 +703,80 @@ async function joinGame() {
   roomCode = code; myName = name;
   try { await initPeer(undefined); } catch (e) { toast(e.message); return; }
 
-  setConnStatus('connecting', 'Connecting to room...');
   showWaitingRoom();
+  connectToHost();
+}
 
+let joinRetries = 0;
+function connectToHost() {
+  setConnStatus('connecting', 'Connecting to room...');
   const hostId = 'flip7-' + roomCode;
-  hostConn = peer.connect(hostId, { reliable: true, serialization: 'json' });
 
-  // Timeout if connection doesn't open
+  if (hostConn) {
+    try { hostConn.close(); } catch (e) {}
+  }
+
+  hostConn = peer.connect(hostId, { reliable: true, serialization: 'json' });
+  console.log('Attempting connection to:', hostId);
+
   const connTimeout = setTimeout(() => {
-    if (connStatus !== 'connected') {
-      setConnStatus('error', 'Could not reach host — try again');
-      toast('Connection timed out. The host may not be reachable.');
+    console.warn('Connection timeout — host not reachable');
+    if (joinRetries < 2) {
+      joinRetries++;
+      setConnStatus('connecting', `Retrying (${joinRetries}/2)...`);
+      toast('Retrying connection...');
+      connectToHost();
+    } else {
+      setConnStatus('error', 'Could not reach host');
+      toast('Could not connect. Make sure the host has the game open.');
+      joinRetries = 0;
+      showRetryButton();
     }
-  }, 15000);
+  }, 10000);
 
   hostConn.on('open', () => {
     clearTimeout(connTimeout);
-    setConnStatus('connected', 'Connected to host');
+    joinRetries = 0;
+    setConnStatus('connected', 'Connected');
+    console.log('Connected to host!');
+    hideRetryButton();
     hostConn.send({ type: 'join', name: myName, id: myId });
     hostConn.on('data', data => handlePlayerMessage(data));
   });
 
   hostConn.on('close', () => {
-    setConnStatus('error', 'Disconnected from host');
-    toast('Disconnected from host');
+    clearTimeout(connTimeout);
+    setConnStatus('error', 'Disconnected');
+    toast('Lost connection to host');
+    showRetryButton();
   });
 
   hostConn.on('error', err => {
     clearTimeout(connTimeout);
     console.error('Connection error:', err);
     setConnStatus('error', 'Connection failed');
-    toast('Could not connect to room. Check the code.');
+    toast('Connection failed: ' + (err.type || err.message || 'unknown error'));
+    showRetryButton();
   });
+}
+
+function showRetryButton() {
+  let btn = $('#retryBtn');
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.id = 'retryBtn';
+    btn.className = 'btn btn-orange';
+    btn.style.marginTop = '12px';
+    btn.textContent = 'Retry Connection';
+    btn.addEventListener('click', () => { joinRetries = 0; connectToHost(); });
+    $('#waitingMsg').parentNode.insertBefore(btn, $('#waitingMsg').nextSibling);
+  }
+  btn.style.display = 'inline-flex';
+}
+
+function hideRetryButton() {
+  const btn = $('#retryBtn');
+  if (btn) btn.style.display = 'none';
 }
 
 // ── Host: Handle Messages ──
