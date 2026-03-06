@@ -6,7 +6,7 @@
 <title>Flip7 — Cheil Game Night</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://unpkg.com/mqtt@5.10.4/dist/mqtt.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -545,13 +545,10 @@ function buildDeck() {
 }
 
 // ── Game State ──
-let peer = null;
-let connections = {};
 let isHost = false;
 let myName = '';
 let myId = '';
 let roomCode = '';
-let hostConn = null;
 let flipAnimating = false;
 
 let gameState = {
@@ -597,73 +594,76 @@ function setConnStatus(status, msg) {
   el.textContent = msg || '';
 }
 
-// ── ICE Servers (STUN + TURN) ──
-function getIceServers() {
-  return [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
-    // Free TURN relay (numb.viagenie.ca — public open-source WebRTC TURN)
-    { urls: 'turn:numb.viagenie.ca', username: 'webrtc@live.com', credential: 'muazkh' },
-    { urls: 'turn:numb.viagenie.ca?transport=tcp', username: 'webrtc@live.com', credential: 'muazkh' },
-  ];
-}
+// ══════════════════════════════════════════════
+// MQTT Multiplayer (HiveMQ free public broker)
+// ══════════════════════════════════════════════
+let mqttClient = null;
+const MQTT_BROKER = 'wss://broker.hivemq.com:8884/mqtt';
 
-// ── PeerJS ──
-function initPeer(id) {
-  const iceServers = getIceServers();
+function topicFor(suffix) { return `flip7/${roomCode}/${suffix}`; }
 
+function connectMqtt() {
   return new Promise((resolve, reject) => {
     setConnStatus('connecting', 'Connecting...');
-    peer = new Peer(id, {
-      host: '0.peerjs.com',
-      port: 443,
-      secure: true,
-      path: '/',
-      debug: 2,
-      config: { iceServers }
+    const clientId = 'flip7_' + Math.random().toString(36).slice(2, 10);
+    myId = clientId;
+
+    mqttClient = mqtt.connect(MQTT_BROKER, {
+      clientId,
+      clean: true,
+      connectTimeout: 10000,
+      keepalive: 30,
+      reconnectPeriod: 3000,
     });
 
-    const timeout = setTimeout(() => {
-      setConnStatus('error', 'Server unreachable');
-      toast('Could not reach PeerJS server. Check your internet connection.');
-      reject(new Error('PeerJS server timeout'));
-    }, 12000);
-
-    peer.on('open', pid => {
-      clearTimeout(timeout);
-      myId = pid;
+    mqttClient.on('connect', () => {
       setConnStatus('connected', 'Online');
-      console.log('Registered as:', pid);
-      resolve(pid);
+      console.log('MQTT connected as', clientId);
+      resolve(clientId);
     });
 
-    peer.on('disconnected', () => {
+    mqttClient.on('reconnect', () => {
       setConnStatus('connecting', 'Reconnecting...');
-      if (!peer.destroyed) peer.reconnect();
     });
 
-    peer.on('error', err => {
-      clearTimeout(timeout);
-      console.error('PeerJS error:', err.type, err);
-      if (err.type === 'unavailable-id') {
-        setConnStatus('error', 'Room code in use');
-        reject(new Error('Room code in use. Try again.'));
-      } else if (err.type === 'peer-unavailable') {
-        setConnStatus('error', 'Room not found');
-        toast('Room not found. Is the host still in the lobby?');
-      } else if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error' || err.type === 'socket-closed') {
-        setConnStatus('error', 'Network error');
-        toast('Network error. Check your connection.');
-        if (!peer.destroyed) setTimeout(() => peer.reconnect(), 3000);
-      } else {
-        setConnStatus('error', err.type);
-        reject(err);
+    mqttClient.on('error', err => {
+      console.error('MQTT error:', err);
+      setConnStatus('error', 'Connection error');
+    });
+
+    mqttClient.on('offline', () => {
+      setConnStatus('error', 'Offline');
+    });
+
+    mqttClient.on('message', (topic, message) => {
+      try {
+        const data = JSON.parse(message.toString());
+        const suffix = topic.split('/').pop();
+        if (isHost) {
+          if (suffix === 'join') handleHostMessage(data);
+          else if (suffix === 'action') handleHostAction(data);
+        } else {
+          if (suffix === 'state') handlePlayerMessage(data);
+        }
+      } catch (e) {
+        console.error('Message parse error:', e);
       }
     });
+
+    // Timeout
+    setTimeout(() => {
+      if (connStatus !== 'connected') {
+        setConnStatus('error', 'Server unreachable');
+        toast('Could not connect to server.');
+        reject(new Error('MQTT timeout'));
+      }
+    }, 12000);
   });
+}
+
+function mqttPublish(suffix, data) {
+  if (!mqttClient || !mqttClient.connected) return;
+  mqttClient.publish(topicFor(suffix), JSON.stringify(data));
 }
 
 // ── Host: Create Game ──
@@ -671,26 +671,17 @@ async function createGame() {
   const name = $('#hostName').value.trim();
   if (!name) { toast('Enter your name'); return; }
   roomCode = generateCode();
-  try { await initPeer('flip7-' + roomCode); } catch (e) { toast(e.message); return; }
+  try { await connectMqtt(); } catch (e) { toast(e.message); return; }
   isHost = true;
   myName = name;
   gameState.targetScore = parseInt($('#targetScore').value) || 200;
   gameState.players = [newPlayer(myId, myName)];
-  peer.on('connection', conn => {
-    console.log('Incoming connection from:', conn.peer);
-    conn.on('open', () => {
-      console.log('Connection opened:', conn.peer);
-      conn.on('data', data => handleHostMessage(conn, data));
-    });
-    conn.on('close', () => {
-      const p = gameState.players.find(p => p.id === conn.peer);
-      if (p) addLog(`${p.name} disconnected`);
-      delete connections[conn.peer];
-    });
-    conn.on('error', err => {
-      console.error('Connection error from peer:', conn.peer, err);
-    });
-  });
+
+  // Host subscribes to join requests and player actions
+  mqttClient.subscribe(topicFor('join'));
+  mqttClient.subscribe(topicFor('action'));
+  console.log('Host listening on', topicFor('join'), topicFor('action'));
+
   showWaitingRoom();
 }
 
@@ -701,113 +692,64 @@ async function joinGame() {
   if (!name) { toast('Enter your name'); return; }
   if (!code.match(/^FLIP-[A-Z0-9]{4}$/)) { toast('Invalid room code'); return; }
   roomCode = code; myName = name;
-  try { await initPeer(undefined); } catch (e) { toast(e.message); return; }
+  try { await connectMqtt(); } catch (e) { toast(e.message); return; }
+
+  // Player subscribes to game state updates
+  mqttClient.subscribe(topicFor('state'));
+  console.log('Player listening on', topicFor('state'));
+
+  // Send join request
+  mqttPublish('join', { type: 'join', name: myName, id: myId });
 
   showWaitingRoom();
-  connectToHost();
-}
 
-let joinRetries = 0;
-function connectToHost() {
-  setConnStatus('connecting', 'Connecting to room...');
-  const hostId = 'flip7-' + roomCode;
-
-  if (hostConn) {
-    try { hostConn.close(); } catch (e) {}
-  }
-
-  hostConn = peer.connect(hostId, { reliable: true, serialization: 'json' });
-  console.log('Attempting connection to:', hostId);
-
-  const connTimeout = setTimeout(() => {
-    console.warn('Connection timeout — host not reachable');
-    if (joinRetries < 2) {
-      joinRetries++;
-      setConnStatus('connecting', `Retrying (${joinRetries}/2)...`);
-      toast('Retrying connection...');
-      connectToHost();
-    } else {
-      setConnStatus('error', 'Could not reach host');
-      toast('Could not connect. Make sure the host has the game open.');
-      joinRetries = 0;
-      showRetryButton();
+  // Retry join request a few times in case host hasn't subscribed yet
+  let joinAttempts = 0;
+  const joinInterval = setInterval(() => {
+    joinAttempts++;
+    if (joinAttempts > 5 || gameState.players.length > 0) {
+      clearInterval(joinInterval);
+      return;
     }
-  }, 10000);
-
-  hostConn.on('open', () => {
-    clearTimeout(connTimeout);
-    joinRetries = 0;
-    setConnStatus('connected', 'Connected');
-    console.log('Connected to host!');
-    hideRetryButton();
-    hostConn.send({ type: 'join', name: myName, id: myId });
-    hostConn.on('data', data => handlePlayerMessage(data));
-  });
-
-  hostConn.on('close', () => {
-    clearTimeout(connTimeout);
-    setConnStatus('error', 'Disconnected');
-    toast('Lost connection to host');
-    showRetryButton();
-  });
-
-  hostConn.on('error', err => {
-    clearTimeout(connTimeout);
-    console.error('Connection error:', err);
-    setConnStatus('error', 'Connection failed');
-    toast('Connection failed: ' + (err.type || err.message || 'unknown error'));
-    showRetryButton();
-  });
+    mqttPublish('join', { type: 'join', name: myName, id: myId });
+  }, 2000);
 }
 
-function showRetryButton() {
-  let btn = $('#retryBtn');
-  if (!btn) {
-    btn = document.createElement('button');
-    btn.id = 'retryBtn';
-    btn.className = 'btn btn-orange';
-    btn.style.marginTop = '12px';
-    btn.textContent = 'Retry Connection';
-    btn.addEventListener('click', () => { joinRetries = 0; connectToHost(); });
-    $('#waitingMsg').parentNode.insertBefore(btn, $('#waitingMsg').nextSibling);
-  }
-  btn.style.display = 'inline-flex';
-}
-
-function hideRetryButton() {
-  const btn = $('#retryBtn');
-  if (btn) btn.style.display = 'none';
-}
-
-// ── Host: Handle Messages ──
-function handleHostMessage(conn, data) {
+// ── Host: Handle Join ──
+function handleHostMessage(data) {
   if (data.type === 'join') {
     const existing = gameState.players.find(p => p.name === data.name);
-    if (existing && existing.id !== data.id) {
-      existing.id = conn.peer; connections[conn.peer] = conn; broadcastState(); addLog(`${data.name} reconnected`); return;
+    if (existing) {
+      existing.id = data.id;
+      broadcastState();
+      addLog(`${data.name} reconnected`);
+      return;
     }
-    if (gameState.players.length >= 10) { conn.send({ type: 'error', msg: 'Game is full' }); return; }
-    if (gameState.phase !== 'lobby') { conn.send({ type: 'error', msg: 'Game in progress' }); return; }
-    connections[conn.peer] = conn;
-    gameState.players.push(newPlayer(conn.peer, data.name));
+    if (gameState.players.length >= 10) return;
+    if (gameState.phase !== 'lobby') return;
+    gameState.players.push(newPlayer(data.id, data.name));
     addLog(`${data.name} joined`);
     broadcastState();
-  } else if (data.type === 'action') {
-    if (gameState.phase !== 'playing') return;
-    const cp = gameState.players[gameState.currentPlayerIdx];
-    if (cp.id !== conn.peer) return;
-    handleAction(data.action, data.payload);
   }
 }
 
-function handlePlayerMessage(data) {
-  if (data.type === 'state') { gameState = data.state; renderGame(); }
-  else if (data.type === 'error') toast(data.msg);
+// ── Host: Handle Player Action ──
+function handleHostAction(data) {
+  if (gameState.phase !== 'playing') return;
+  const cp = gameState.players[gameState.currentPlayerIdx];
+  if (cp.id !== data.playerId) return;
+  handleAction(data.action, data.payload);
 }
 
+// ── Player: Handle State Updates ──
+function handlePlayerMessage(data) {
+  gameState = data;
+  renderGame();
+}
+
+// ── Broadcast State (Host → All Players) ──
 function broadcastState() {
-  const msg = { type: 'state', state: gameState };
-  for (const conn of Object.values(connections)) { try { conn.send(msg); } catch (e) {} }
+  mqttPublish('state', gameState);
   renderGame();
 }
 
@@ -978,7 +920,7 @@ function addLog(msg) { gameState.log.push(msg); if (gameState.log.length > 60) g
 
 function sendAction(action, payload = {}) {
   if (isHost) handleAction(action, payload);
-  else if (hostConn) hostConn.send({ type: 'action', action, payload });
+  else mqttPublish('action', { action, payload, playerId: myId });
 }
 
 // ═══════════════════════════════════════
