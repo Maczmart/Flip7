@@ -256,6 +256,7 @@ input:focus { border-color: var(--orange); }
 .scoreboard-entry:last-child { border-bottom: none; }
 .scoreboard-entry .score-name { font-weight: 600; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scoreboard-entry .score-pts { font-weight: 800; color: var(--yellow); font-size: 16px; }
+.score-preview { font-size: 12px; font-weight: 600; color: var(--gray); margin-left: 4px; }
 .scoreboard-entry.me .score-name { color: var(--orange); }
 
 .round-info {
@@ -853,7 +854,10 @@ function dealStartingCards() {
 // ── Host: Resolve a drawn card for a player ──
 // Cards that let the player choose a target
 function isTargetableCard(card) {
-  return card && ['freeze', 'multiply2x', 'modifier'].includes(card.type);
+  return card && ['freeze', 'flipThree'].includes(card.type);
+}
+function isSelfOnlyCard(card) {
+  return card && ['multiply2x', 'modifier'].includes(card.type);
 }
 
 // Resolve a card immediately (no delay — used during deal and for non-event cards)
@@ -881,14 +885,6 @@ function resolveCardInstant(player, card) {
         player.roundScore = calcRoundScore(player);
         addLog(`<span class="log-action">${player.name}</span> hat 7 verschiedene Zahlen! +15 Bonus!`);
       }
-    }
-  } else if (card.type === 'flipThree') {
-    addLog(`<span class="log-action">${player.name}</span> zog <span class="log-action">FLIP THREE</span> — zieht 3 weitere Karten!`);
-    for (let i = 0; i < 3; i++) {
-      if (player.busted || player.stopped) break;
-      if (gameState.deck.length === 0) { gameState.deck = buildDeck(); addLog('Deck neu gemischt'); }
-      const nextCard = gameState.deck.pop();
-      resolveCardInstant(player, nextCard);
     }
   }
 }
@@ -921,10 +917,14 @@ const freezeSubs = [
   (drawer, target) => drawer === target ? `${drawer} macht den Kühlschrank. Smart.` : `${drawer} sagt zu ${target}: Setz dich hin.`,
 ];
 const multiplySubs = [
-  (drawer, target) => drawer === target ? `${drawer} verdoppelt den eigenen Score. Gierig.` : `${drawer} gönnt ${target} den Doppel-Boost. Wie nett.`,
+  name => `${name} verdoppelt den eigenen Score. Gierig.`,
+  name => `${name} sieht doppelt. Im guten Sinne.`,
+  name => `x2 für ${name}. Mathe war noch nie so schön.`,
 ];
 const modifierSubs = [
-  (drawer, target, val) => drawer === target ? `${drawer} gibt sich selbst +${val}. Bescheiden.` : `${drawer} drückt ${target} +${val} Punkte auf. Dreist.`,
+  (name, val) => `${name} sackt +${val} Bonuspunkte ein. Geschenkt.`,
+  (name, val) => `+${val} für ${name}. Einfach so. Unfair.`,
+  (name, val) => `${name} bekommt +${val} obendrauf. Nice.`,
 ];
 const flipThreeSubs = [
   name => `${name} zieht 3 Karten. Was kann schon schiefgehen?`,
@@ -977,6 +977,15 @@ function applyCardToTarget(target, card, drawer) {
     target.modifiers.push(card.value);
     const who = target.id === drawer.id ? '' : ` an <span class="log-highlight">${target.name}</span>`;
     addLog(`<span class="log-action">${drawer.name}</span> gab <span class="log-action">+${card.value}</span>${who}`);
+  } else if (card.type === 'flipThree') {
+    const who = target.id === drawer.id ? '' : ` für <span class="log-highlight">${target.name}</span>`;
+    addLog(`<span class="log-action">${drawer.name}</span> spielte <span class="log-action">FLIP THREE</span>${who} — ${target.name} zieht 3 Karten!`);
+    for (let i = 0; i < 3; i++) {
+      if (target.busted || target.stopped) break;
+      if (gameState.deck.length === 0) { gameState.deck = buildDeck(); addLog('Deck neu gemischt'); }
+      const nextCard = gameState.deck.pop();
+      resolveCardInstant(target, nextCard);
+    }
   }
 }
 
@@ -1041,14 +1050,33 @@ function handleAction(action, payload) {
         advanceTurn();
         broadcastState();
       }, 2500);
+    } else if (isSelfOnlyCard(card)) {
+      // Auto-apply modifier/x2 to self with overlay
+      applyCardToTarget(cp, card, cp);
+      const cardName = card.type === 'multiply2x' ? 'x2 MULTIPLIKATOR' : `+${card.value}`;
+      const icon = card.type === 'multiply2x' ? '✖️' : '➕';
+      const sub = card.type === 'multiply2x' ? pickRandom(multiplySubs)(cp.name) : pickRandom(modifierSubs)(cp.name, card.value);
+      gameState.event = { type: 'action', icon, title: cardName, sub };
+      gameState.turnPhase = 'revealing';
+      gameState._revealStart = Date.now();
+      broadcastState();
+      if (revealTimer) clearTimeout(revealTimer);
+      revealTimer = setTimeout(() => {
+        revealTimer = null;
+        if (gameState.turnPhase !== 'revealing') return;
+        gameState.event = null;
+        gameState._revealStart = null;
+        advanceTurn();
+        broadcastState();
+      }, 2800);
     } else if (isTargetableCard(card)) {
-      // Store pending card — player must choose target
+      // Store pending card — player must choose target (freeze, flipThree)
       gameState.pendingCard = card;
       gameState.turnPhase = 'chooseTarget';
       broadcastState();
     } else {
-      // Check for dramatic events (bust, second chance save, flip7, flipThree)
-      const event = card.type === 'flipThree' ? detectFlipThreeEvent(cp) : detectNumberEvent(cp, card);
+      // Check for dramatic events (bust, second chance save, flip7)
+      const event = detectNumberEvent(cp, card);
 
       if (event) {
         // Phase 1: show the card + event, don't resolve yet
@@ -1080,20 +1108,26 @@ function handleAction(action, payload) {
     }
   } else if (action === 'applyTarget') {
     if (!gameState.pendingCard) return;
+    // Only the active player can choose a target
+    if (payload.playerId && payload.playerId !== cp.id) return;
     const targetPlayer = gameState.players.find(p => p.id === payload.targetId);
     if (!targetPlayer || targetPlayer.busted || targetPlayer.stopped) return;
     const card = gameState.pendingCard;
 
     // Build event for the action card application
-    const cardName = card.type === 'freeze' ? 'FREEZE' :
-      card.type === 'multiply2x' ? 'x2 MULTIPLIKATOR' : `+${card.value}`;
-    const icon = card.type === 'freeze' ? '🥶' :
-      card.type === 'multiply2x' ? '✖️' : '➕';
-    const eventType = card.type === 'freeze' ? 'freeze' : 'action';
     const dn = cp.name, tn = targetPlayer.name;
-    const sub = card.type === 'freeze' ? pickRandom(freezeSubs)(dn, tn)
-      : card.type === 'multiply2x' ? pickRandom(multiplySubs)(dn, tn)
-      : pickRandom(modifierSubs)(dn, tn, card.value);
+    let cardName, icon, eventType, sub;
+    if (card.type === 'freeze') {
+      cardName = 'FREEZE'; icon = '🥶'; eventType = 'freeze';
+      sub = pickRandom(freezeSubs)(dn, tn);
+    } else if (card.type === 'flipThree') {
+      cardName = 'FLIP THREE'; icon = '🃏'; eventType = 'action';
+      sub = cp.id === targetPlayer.id
+        ? pickRandom(flipThreeSubs)(dn)
+        : `${dn} drückt ${tn} drei Karten auf. Fies!`;
+    } else {
+      cardName = card.type; icon = '🎴'; eventType = 'action'; sub = '';
+    }
     gameState.event = { type: eventType, icon, title: cardName, sub };
 
     applyCardToTarget(targetPlayer, card, cp);
@@ -1286,6 +1320,7 @@ function renderBoard() {
   else if (me && me.stopped) { banner.textContent = `Gestoppt — ${me.roundScore} Pkt. gesichert`; banner.classList.add('stopped'); }
   else if (choosingTarget) { banner.textContent = 'Wähle einen Spieler für die Karte!'; banner.classList.add('your-turn'); }
   else if (isMyTurn) { banner.textContent = 'Dein Zug — Aufdecken oder Stoppen?'; banner.classList.add('your-turn'); }
+  else if (gameState.turnPhase === 'chooseTarget' && cp) { banner.textContent = `${cp.name} wählt ein Ziel...`; banner.classList.add('other-turn'); hide('#targetOverlay'); }
   else if (cp) { banner.textContent = `${cp.name} ist dran...`; banner.classList.add('other-turn'); }
 
   // Deck / Flip card
@@ -1392,7 +1427,9 @@ function renderScoreboard() {
   [...gameState.players].sort((a, b) => b.score - a.score).forEach(p => {
     const div = document.createElement('div');
     div.className = 'scoreboard-entry' + (p.id === myId ? ' me' : '');
-    div.innerHTML = `<span class="score-name">${escHtml(p.name)}</span><span class="score-pts">${p.score}</span>`;
+    const roundPts = !p.busted && !p.stopped ? calcRoundScore(p) : p.roundScore || 0;
+    const preview = roundPts > 0 ? `<span class="score-preview">→ ${p.score + roundPts}</span>` : '';
+    div.innerHTML = `<span class="score-name">${escHtml(p.name)}</span><span class="score-pts">${p.score} ${preview}</span>`;
     entries.appendChild(div);
   });
 }
@@ -1463,8 +1500,7 @@ function hideEventOverlay() {
 
 function showTargetSelector(card) {
   const cardName = card.type === 'freeze' ? 'FREEZE' :
-    card.type === 'multiply2x' ? 'x2 MULTIPLIKATOR' :
-    card.type === 'modifier' ? `+${card.value}` : '';
+    card.type === 'flipThree' ? 'FLIP THREE' : '';
 
   $('#targetTitle').textContent = `${cardName} anwenden auf...`;
   $('#targetCardPreview').innerHTML = `<img src="${cardImage(card)}" alt="${cardName}">`;
